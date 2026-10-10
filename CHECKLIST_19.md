@@ -1,8 +1,8 @@
-# LicenseFix v2.1.0-beta – đối chiếu 19 nhóm kiểm tra License Info
+# LicenseFix v2.1.1-beta – đối chiếu 19 nhóm kiểm tra License Info
 
 Đối chiếu về **phạm vi chức năng**, không sao chép kết luận hay bảo đảm 19/19 mục luôn xanh. Nguồn tham khảo: [tiennnict/license.info.vn](https://github.com/tiennnict/license.info.vn) (Apache-2.0).
 
-| # | Nhóm kiểm tra | Hỗ trợ trong LicenseFix 2.1.0-beta | Can thiệp |
+| # | Nhóm kiểm tra | Hỗ trợ trong LicenseFix 2.1.1-beta | Can thiệp |
 |---|---|---|---|
 | 1 | Thông tin Windows và OEM BIOS | Quét sâu đọc trạng thái Windows; menu key đọc 5 ký tự cuối key OEM BIOS nếu có | Không |
 | 2 | Windows WMI/SPP | Có | Không gỡ key |

@@ -1,6 +1,6 @@
 ﻿#requires -Version 5.1
 <#
-LicenseFix v2.1.0-beta - Windows/Office license diagnostics and scoped remediation.
+LicenseFix v2.1.1-beta - Windows/Office license diagnostics and scoped remediation.
 Preview build: test on a lab PC before performing repairs.
 Independent project. Not affiliated with Microsoft or license.info.vn.
 Repairs only specifically reviewed settings after successful backups and confirmation.
@@ -11,7 +11,7 @@ Product keys change only after separate, explicit confirmation by the user.
 param([ValidateSet('Menu','Scan','Plan','Repair','Export','Deep')][string]$Mode='Menu')
 
 $ErrorActionPreference = 'Stop'
-$LFVersion = '2.1.0-beta'
+$LFVersion = '2.1.1-beta'
 $LFWindowsId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 $LFOfficeId = '0ff1ce15-a989-479d-af46-f275c6370663'
 $LFBackups = Join-Path $env:ProgramData 'LicenseFix\Backups'
@@ -759,7 +759,66 @@ function LF-ShowKeyInventory($Inventory) {
     Write-Host ''
     Write-Host (" Kênh KMS/MAK phát hiện: {0}." -f $(if($Inventory.WindowsVolume -or $Inventory.OfficeVolume){'Có'}else{'Chưa thấy'})) -ForegroundColor Yellow
     Write-Host ' KMS/MAK có thể là giấy phép hợp lệ của tổ chức. Key đã kích hoạt cũng không chứng minh nguồn gốc mua.' -ForegroundColor Yellow
-    Write-Host ' Chỉ hiển thị 5 ký tự cuối; chương trình không khôi phục toàn bộ key từ máy.' -ForegroundColor DarkGray
+    Write-Host ' Mặc định chỉ hiển thị 5 ký tự cuối; mục 7 cho xem đầy đủ key Windows khi xác nhận riêng.' -ForegroundColor DarkGray
+}
+function LF-DecodeWindowsDigitalProductId([byte[]]$Data) {
+    if (-not $Data -or $Data.Length -lt 67) { return $null }
+    $alphabet = 'BCDFGHJKMPQRTVWXY2346789'
+    [byte[]]$bytes = $Data[52..66]
+    $newFormat = (([int]$bytes[14] -shr 3) -band 1) -eq 1
+    $bytes[14] = [byte]($bytes[14] -band 0xF7)
+    $chars = New-Object char[] 25
+    for ($i=24; $i -ge 0; $i--) {
+        $remainder = 0
+        for ($j=14; $j -ge 0; $j--) {
+            $value = $remainder * 256 + [int]$bytes[$j]
+            $bytes[$j] = [byte][math]::Truncate($value / 24)
+            $remainder = $value % 24
+        }
+        $chars[$i] = $alphabet[$remainder]
+    }
+    $decoded = -join $chars
+    if ($newFormat) {
+        $position = $alphabet.IndexOf($decoded[0])
+        if ($position -lt 0) { return $null }
+        $decoded = $decoded.Substring(1).Insert($position, 'N')
+    }
+    if ($decoded.Length -ne 25 -or $decoded -ceq ('B' * 25)) { return $null }
+    return ([regex]::Replace($decoded, '(.{5})(?=.)', '$1-'))
+}
+function LF-ShowFullWindowsKeys($Inventory) {
+    LF-Title 'XEM KEY WINDOWS ĐẦY ĐỦ'
+    Write-Warning 'Key sẽ hiện rõ trong cửa sổ PowerShell, ảnh chụp và lịch sử phiên có thể lưu lại. Chỉ xem trên máy bạn kiểm soát.'
+    Write-Host 'Key OEM BIOS và key giải mã từ Registry có thể khác nhau; key Registry có thể là key chung của bộ cài, không phải key đã mua.' -ForegroundColor Yellow
+    if ((Read-Host 'Gõ HIENTHI để xem đầy đủ key Windows, hoặc Enter để hủy') -cne 'HIENTHI') {
+        Write-Host 'Đã hủy; không đọc key đầy đủ.'
+        return
+    }
+    $oemKey = $null
+    try {
+        $oemKey = [string](Get-CimInstance -ClassName SoftwareLicensingService -Property OA3xOriginalProductKey -ErrorAction Stop).OA3xOriginalProductKey
+        if ($oemKey -cmatch '^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$') {
+            Write-Host ('OEM trong BIOS/MSDM: ' + $oemKey) -ForegroundColor Cyan
+        } else { Write-Host 'OEM trong BIOS/MSDM: không có hoặc không đọc được.' -ForegroundColor Yellow }
+    } catch { Write-Warning 'Không đọc được key OEM trong BIOS/MSDM.' }
+    $oemKey = $null
+    $registryKey = $null
+    try {
+        $raw = (Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name DigitalProductId -ErrorAction Stop).DigitalProductId
+        $registryKey = LF-DecodeWindowsDigitalProductId ([byte[]]$raw)
+        if ($registryKey) {
+            Write-Host ('Giải mã từ Registry: ' + $registryKey) -ForegroundColor Cyan
+            $tail = $registryKey.Substring($registryKey.Length - 5)
+            if (@($Inventory.Windows | Where-Object { $_.PartialProductKey -ceq $tail }).Count) {
+                Write-Host '  5 ký tự cuối trùng một bản ghi WMI; chưa chứng minh đây là key có thể dùng để cài lại.' -ForegroundColor Gray
+            } else {
+                Write-Host '  Không trùng 5 ký tự cuối bản ghi WMI đang đọc; có thể là key chung hoặc giá trị cũ.' -ForegroundColor Yellow
+            }
+        } else { Write-Host 'Registry: không giải mã được key 25 ký tự đáng tin cậy.' -ForegroundColor Yellow }
+    } catch { Write-Warning 'Không đọc được DigitalProductId trong Registry.' }
+    $raw = $null; $registryKey = $null
+    Write-Host 'Office/Microsoft 365: WMI thường chỉ có 5 ký tự cuối hoặc giấy phép tài khoản; không suy diễn thành key đầy đủ.' -ForegroundColor Gray
+    Write-Host 'Các key vừa hiện không được ghi vào báo cáo JSON hay bản sao của LicenseFix.' -ForegroundColor Gray
 }
 function LF-ReadOwnedKey {
     $secret = Read-Host 'Nhập key bạn sở hữu (ẩn ký tự; Enter để hủy)' -AsSecureString
@@ -892,21 +951,28 @@ function LF-KeyMenu {
         Clear-Host
         LF-ShowKeyInventory $inventory
         Write-Host ''
-        Write-Host ' 1. Đọc lại thông tin key và Office'
+        Write-Host ' 1. Làm mới bảng thông tin key và Office'
         Write-Host ' 2. Nhập key Windows chính hãng'
         Write-Host ' 3. Nhập key Office Volume/MAK của tổ chức'
         Write-Host ' 4. Hướng dẫn Office Retail / Microsoft 365'
         Write-Host ' 5. Xem trạng thái Microsoft 365 bằng vnextdiag'
         Write-Host ' 6. Quét dấu hiệu can thiệp (chuyên sâu, có thể chậm)'
+        Write-Host ' 7. Xem đầy đủ key Windows OEM / Registry (xác nhận riêng)'
         Write-Host ' 0. Quay về'
         $choice = Read-Host 'Chọn'
         switch ($choice) {
-            '1' { $inventory = LF-GetKeyInventory -ForceRefresh }
+            '1' {
+                $inventory = LF-GetKeyInventory -ForceRefresh
+                Clear-Host
+                LF-ShowKeyInventory $inventory
+                Write-Host 'Đã đọc lại thông tin key và Office ở trên.' -ForegroundColor Green
+            }
             '2' { if (LF-InstallWindowsKey $inventory) { $inventory = LF-GetKeyInventory -ForceRefresh } }
             '3' { if (LF-InstallOfficeVolumeKey $inventory) { $inventory = LF-GetKeyInventory -ForceRefresh } }
             '4' { LF-OfficeKeyGuide $inventory }
             '5' { LF-ShowVNextStatus }
             '6' { $deep = LF-DeepInspect; LF-DeepDisplay $deep; Write-Host 'Dấu hiệu kỹ thuật không kết luận key mua hợp pháp hay crack.' -ForegroundColor Yellow }
+            '7' { LF-ShowFullWindowsKeys $inventory }
             '0' {}
             default { Write-Warning 'Lựa chọn không hợp lệ.' }
         }

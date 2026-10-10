@@ -1,4 +1,4 @@
-# LicenseFix v2.1.0-beta
+# LicenseFix v2.1.1-beta
 
 Công cụ kiểm tra bản quyền Windows/Office và xử lý **từng lỗi có bằng chứng** trên Windows PowerShell 5.1. Bản này vẫn cần kiểm thử trên máy ảo trước khi dùng thao tác sửa trên máy thật.
 
@@ -17,7 +17,9 @@ Launcher `launch.ps1` tải mã từ nhánh `main` và kiểm tra SHA-256 trư�
 
 ## Key Windows và Office
 
-- Mục 7 hiển thị trạng thái cấp phép Windows/Office, kênh key, 5 ký tự cuối của key đang cài và key OEM nhúng BIOS (nếu đọc được). Không khôi phục hay in toàn bộ key. Dòng `KMS/Volume: False` cũ được thay bằng nhãn “Chưa thấy trong phạm vi quét”; đây không phải xác nhận key chính hãng.
+- Mục 7 ở menu chính hiển thị trạng thái cấp phép Windows/Office, kênh key, 5 ký tự cuối của key đang cài và key OEM nhúng BIOS (nếu đọc được). Dòng `KMS/Volume: False` cũ được thay bằng nhãn “Chưa thấy trong phạm vi quét”; đây không phải xác nhận key chính hãng.
+- Trong menu key, mục 1 **làm mới cùng bảng thông tin** và hiện kết quả ngay sau khi đọc xong. Mục 7 riêng cho phép xem **đầy đủ key Windows OEM trong BIOS và key giải mã từ Registry** sau khi gõ `HIENTHI`. Key Registry có thể là key chung hoặc giá trị cũ; đừng coi nó là key đã mua chỉ vì hiển thị đủ 25 ký tự.
+- Key đầy đủ chỉ hiện tại cửa sổ PowerShell sau xác nhận; LicenseFix không ghi key đó vào JSON hay bản sao. Ảnh chụp và bản ghi phiên PowerShell vẫn có thể chứa key, nên hãy giữ kín. Việc hiện đủ key Office/Microsoft 365 không được hứa hẹn vì cơ chế cấp phép khác nhau.
 - Office được nhận diện từ sản phẩm Click-to-Run đang cài, phiên bản, kiến trúc, kênh cập nhật; các bản ghi WMI cấp phép được liệt kê riêng vì có thể còn lưu sản phẩm cũ. Kênh cập nhật và kiến trúc không quyết định loại key.
 - Windows: nhập key 25 ký tự đang sở hữu trên máy cá nhân đã xác minh không thuộc domain/Volume; chương trình cảnh báo rằng key cũ có thể bị thay và không có bản sao đầy đủ để khôi phục. Nhập key và kích hoạt là hai bước riêng.
 - Microsoft 365: dùng tài khoản/thuê bao; Office Retail: đổi key và liên kết tài khoản theo hướng dẫn Microsoft. Mục nhập key qua `ospp.vbs` chỉ mở khi nhận diện được **Office Volume đang cài**; công cụ có thể để lộ key tạm thời trong dòng lệnh của tiến trình. Chỉ dùng key do tổ chức cấp.
@@ -34,6 +36,6 @@ Launcher `launch.ps1` tải mã từ nhánh `main` và kiểm tra SHA-256 trư�
 
 ## Nguồn tham khảo
 
-Giao diện bằng chứng và luồng đi từ kết luận tới hành động được nghiên cứu từ [license.info.vn](https://github.com/tiennnict/license.info.vn) (Apache-2.0). LicenseFix không nhúng mã nguồn của dự án đó và không đồng nhất mọi heuristic hay thao tác xóa của họ với quy tắc sửa tự động của mình.
+Giao diện bằng chứng, luồng đi từ kết luận tới hành động và cách diễn giải key Registry được tham khảo từ [license.info.vn](https://github.com/tiennnict/license.info.vn) (Apache-2.0). LicenseFix có triển khai riêng tính năng giải mã `DigitalProductId`; kết quả không được dùng làm bằng chứng sở hữu bản quyền. Các quy tắc sửa tự động vẫn do LicenseFix xác định riêng.
 
 Hướng dẫn kích hoạt tham khảo: [Microsoft 365/Office Retail](https://support.microsoft.com/en-us/microsoft-365-activation-licensing/office-install/where-to-enter-your-office-product-key), [Office Volume](https://learn.microsoft.com/en-us/deployoffice/vlactivation/tools-to-manage-volume-activation-of-office), [trạng thái Microsoft 365 vNext](https://learn.microsoft.com/en-gb/microsoft-365-apps/licensing-activation/vnextdiag).
