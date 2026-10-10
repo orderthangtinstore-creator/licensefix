@@ -1,6 +1,6 @@
 ﻿#requires -Version 5.1
 <#
-LicenseFix v2.1.2-beta - Windows/Office license diagnostics and scoped remediation.
+LicenseFix v2.1.3-beta - Windows/Office license diagnostics and scoped remediation.
 Preview build: test on a lab PC before performing repairs.
 Independent project. Not affiliated with Microsoft or license.info.vn.
 Repairs only specifically reviewed settings after successful backups and confirmation.
@@ -11,7 +11,7 @@ Product keys change only after separate, explicit confirmation by the user.
 param([ValidateSet('Menu','Scan','Plan','Repair','Export','Deep')][string]$Mode='Menu')
 
 $ErrorActionPreference = 'Stop'
-$LFVersion = '2.1.2-beta'
+$LFVersion = '2.1.3-beta'
 $LFWindowsId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 $LFOfficeId = '0ff1ce15-a989-479d-af46-f275c6370663'
 $LFBackups = Join-Path $env:ProgramData 'LicenseFix\Backups'
@@ -220,6 +220,16 @@ function LF-RepairBlockers($Scan) {
     if ($Scan.KmsVolume) { [void]$reasons.Add('Có giấy phép KMS/Volume có thể hợp lệ của tổ chức.') }
     return @($reasons.ToArray())
 }
+function LF-ExportRegistryKey([string]$NativePath,[string]$Destination) {
+    & reg.exe export $NativePath $Destination /y | Out-Null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $Destination)) {
+        throw "Sao lưu Registry thất bại tại $NativePath. Chưa sửa dữ liệu."
+    }
+    $file = Get-Item -LiteralPath $Destination -ErrorAction Stop
+    if ($file.Length -lt 40 -or (Get-Content -LiteralPath $Destination -TotalCount 1 -ErrorAction Stop) -cne 'Windows Registry Editor Version 5.00') {
+        throw "Bản sao Registry không hợp lệ tại $NativePath. Chưa sửa dữ liệu."
+    }
+}
 function LF-Repair($Scan,[switch]$SkipRescan) {
     $script:LFRepairChanged=$false
     LF-Title 'SAO LƯU VÀ SỬA REGISTRY'
@@ -230,27 +240,31 @@ function LF-Repair($Scan,[switch]$SkipRescan) {
         return
     }
     $fixes = @($Scan.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
-    if ($fixes.Count -eq 0) { Write-Host 'Không có giá trị Registry đủ điều kiện xử lý.'; return }
+    if ($fixes.Count -eq 0) { Write-Host 'Không phát hiện giá trị Registry thuộc phạm vi sửa an toàn. Chưa cần sao lưu; không có gì bị thay đổi.' -ForegroundColor Yellow; return }
     foreach ($f in $fixes) { Write-Host ("SẼ XÓA {0}: {1} / {2} = {3}" -f $f.Id,$f.RegistryPath,$f.ValueName,$f.ExpectedValue) }
     Write-Warning 'Chỉ xóa giá trị đã liệt kê. Không xóa cả khóa Registry hoặc kho SPP.'
-    if ((Read-Host 'Gõ SUA để sao lưu và chỉ xóa các giá trị đã xác minh') -cne 'SUA') {
+    Write-Host 'Nhấn Y: tự sao lưu và xác minh tất cả khóa liên quan, rồi mới sửa. Phím khác: hủy.' -ForegroundColor Cyan
+    if (([string](Read-Host 'Xác nhận sao lưu rồi sửa? [Y/N]')).Trim().ToUpperInvariant() -cne 'Y') {
         Write-Host 'Đã hủy, không thay đổi dữ liệu.'; return
     }
-    $backup = Join-Path $LFBackups (Get-Date -Format 'yyyyMMdd-HHmmss')
-    New-Item -Path $backup -ItemType Directory -Force | Out-Null
-    $fixes | ConvertTo-Json -Depth 5 | Out-File -LiteralPath (Join-Path $backup 'repair-plan.json') -Encoding UTF8
-    $paths = @($fixes | Select-Object -ExpandProperty RegistryPath -Unique)
-    $n = 0
-    # Back up ALL affected Registry keys successfully before making any change.
-    foreach ($path in $paths) {
-        $native = LF-NativePath $path
-        $regfile = Join-Path $backup ("registry-{0:d3}.reg" -f (++$n))
-        & reg.exe export $native $regfile /y | Out-Null
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $regfile)) {
-            throw "Sao lưu thất bại tại $native. Chưa xóa dữ liệu Registry."
+    $backup = Join-Path $LFBackups ('registry-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,6))
+    try {
+        [void](New-Item -Path $backup -ItemType Directory -Force -ErrorAction Stop)
+        $fixes | ConvertTo-Json -Depth 5 | Out-File -LiteralPath (Join-Path $backup 'repair-plan.json') -Encoding UTF8 -ErrorAction Stop
+        $paths = @($fixes | Select-Object -ExpandProperty RegistryPath -Unique)
+        $n = 0
+        # Back up ALL affected Registry keys successfully before making any change.
+        foreach ($path in $paths) {
+            $native = LF-NativePath $path
+            $regfile = Join-Path $backup ("registry-{0:d3}.reg" -f (++$n))
+            LF-ExportRegistryKey $native $regfile
         }
+    } catch {
+        Write-Warning ('Không sửa Registry vì chưa sao lưu đầy đủ: ' + $_.Exception.Message)
+        return
     }
-    Write-Host "Bản sao Registry: $backup" -ForegroundColor Green
+    Write-Host "Đã sao lưu và xác minh $($paths.Count) khóa Registry: $backup" -ForegroundColor Green
+    Write-Host 'Bắt đầu sửa các giá trị đã liệt kê...' -ForegroundColor Cyan
     foreach ($f in $fixes) {
         $current = LF-ReadValue $f.RegistryPath $f.ValueName
         if ([string]$current -cne [string]$f.ExpectedValue) {
@@ -260,7 +274,10 @@ function LF-Repair($Scan,[switch]$SkipRescan) {
             Remove-ItemProperty -LiteralPath $f.RegistryPath -Name $f.ValueName -ErrorAction Stop
             $script:LFRepairChanged=$true
             Write-Host ("Đã xử lý: {0}" -f $f.Id) -ForegroundColor Green
-        } catch { Write-Warning "Không thể xử lý $($f.Id): $($_.Exception.Message)" }
+        } catch {
+            Write-Warning "Không thể xử lý $($f.Id): $($_.Exception.Message). Đã dừng các mục còn lại; bản sao ở $backup."
+            break
+        }
     }
     Write-Warning 'Không tự nhập lại bản sao .reg trước khi xác minh bản quyền.'
     if (-not $SkipRescan){LF-Show (LF-Scan)}
@@ -488,13 +505,15 @@ function LF-RepairHosts($Scan) {
         Write-Warning 'Có dòng hosts chứa thêm tên miền khác; giữ nguyên để kiểm tra thủ công:'
         foreach ($line in $review.ManualLines) { Write-Host ('  ' + $line) -ForegroundColor Yellow }
     }
-    if (-not $review.SafeLines.Count) { Write-Host 'Không có dòng hosts riêng cho máy chủ kích hoạt cần xử lý.'; return $false }
+    if (-not $review.SafeLines.Count) { Write-Host 'Không có dòng hosts đủ điều kiện gỡ. Chưa cần sao lưu; tệp không thay đổi.' -ForegroundColor Yellow; return $false }
     Write-Host ' Các dòng dự kiến gỡ khỏi hosts:' -ForegroundColor Yellow
     foreach ($line in $review.SafeLines) { Write-Host ('  ' + $line) }
-    if ((Read-Host 'Gõ HOSTS để sao lưu và gỡ đúng các dòng trên') -cne 'HOSTS') {
+    Write-Host 'Nhấn Y: tự sao lưu và xác minh tệp hosts, rồi mới gỡ các dòng trên. Phím khác: hủy.' -ForegroundColor Cyan
+    if (([string](Read-Host 'Xác nhận sao lưu rồi sửa? [Y/N]')).Trim().ToUpperInvariant() -cne 'Y') {
         Write-Host 'Đã hủy; tệp hosts không thay đổi.'
         return $false
     }
+    $backupVerified = $false
     try {
         $current = [IO.File]::ReadAllBytes($review.Path)
         $hash = [Security.Cryptography.SHA256]::Create()
@@ -511,6 +530,9 @@ function LF-RepairHosts($Scan) {
         if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -cne $before.Replace('-','')) {
             throw 'Bản sao lưu hosts không khớp dữ liệu gốc; chưa sửa dữ liệu.'
         }
+        $backupVerified = $true
+        Write-Host ("Đã sao lưu và xác minh hosts: {0}" -f $copy) -ForegroundColor Green
+        Write-Host 'Bắt đầu gỡ các dòng đã liệt kê...' -ForegroundColor Cyan
         try {
             [IO.File]::WriteAllBytes($review.Path, $review.FixedBytes)
             $written = [IO.File]::ReadAllBytes($review.Path)
@@ -522,12 +544,22 @@ function LF-RepairHosts($Scan) {
             if ($expected -cne $actual) { throw 'Không xác minh được dữ liệu hosts sau khi ghi.' }
         }
         catch {
-            Copy-Item -LiteralPath $copy -Destination $review.Path -Force -ErrorAction SilentlyContinue
-            throw
+            $repairError = $_.Exception.Message
+            $restored = $false
+            try {
+                Copy-Item -LiteralPath $copy -Destination $review.Path -Force -ErrorAction Stop
+                $restored = (Get-FileHash -LiteralPath $review.Path -Algorithm SHA256).Hash -ceq $before.Replace('-','')
+            } catch {}
+            if ($restored) { throw "Sửa hosts thất bại ($repairError); đã khôi phục tệp gốc từ $copy." }
+            throw "Sửa hosts thất bại ($repairError); chưa xác minh được việc khôi phục. Kiểm tra bản sao $copy."
         }
         Write-Host ("Đã gỡ {0} dòng. Bản sao lưu: {1}" -f $review.SafeLines.Count,$copy) -ForegroundColor Green
         return $true
-    } catch { Write-Warning ('Không sửa được hosts: ' + $_.Exception.Message); return $false }
+    } catch {
+        if (-not $backupVerified) { Write-Warning ('Chưa sửa hosts vì chưa sao lưu và xác minh được: ' + $_.Exception.Message) }
+        else { Write-Warning ('Không hoàn tất sửa hosts: ' + $_.Exception.Message) }
+        return $false
+    }
 }
 function LF-DeepPlan($Scan) {
     LF-Title 'KẾ HOẠCH XỬ LÝ'
@@ -552,6 +584,8 @@ function LF-DeepPlan($Scan) {
     Write-Host ' [S] Chạy sfc.exe /scannow: kiểm tra và sửa tệp hệ thống khi cần.' -ForegroundColor White
     Write-Host ' [D] Chạy dism.exe /Online /Cleanup-Image /RestoreHealth: sửa kho thành phần Windows.' -ForegroundColor White
     Write-Host ' [K] Key chính hãng: xem key đã cài, nhập key Windows/Office phù hợp.' -ForegroundColor White
+    Write-Host ' R/H: chọn hành động, nhấn Y; chương trình tự sao lưu, xác minh rồi mới sửa. Không cần sao lưu trước.' -ForegroundColor Cyan
+    Write-Host ' S/D và nhập key có xác nhận riêng; bản sao Registry/hosts không hoàn tác được các thao tác này.' -ForegroundColor Yellow
     Write-Host ''
     Write-Host ' Các mục cảnh báo, cần xem hoặc chưa quét:' -ForegroundColor Cyan
     foreach ($it in @($Scan.Items | Where-Object { $_.Status -ne 'PASS' })) {
@@ -589,14 +623,16 @@ function LF-DeepAction($Scan) {
         'R' {
             $eligible = @($Scan.Base.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
             if (-not $eligible.Count) {
-                Write-Host 'Không có giá trị Registry đủ điều kiện sửa; xem lý do khóa ở kế hoạch trên.' -ForegroundColor Yellow
-            } else {
-                LF-DeepReport $Scan 'before'
-                LF-Repair $Scan.Base -SkipRescan
-                if ($script:LFRepairChanged) {
-                    $script:LFLastDeep=$null; $script:LFLastScan=$null; $script:LFProductCache=$null
-                    Write-Host 'Registry đã thay đổi. Hãy quét lại để có kết luận mới.' -ForegroundColor Yellow
-                }
+                Write-Host 'Chưa phát hiện giá trị Registry đủ điều kiện sửa. Chưa cần sao lưu; không có gì bị thay đổi.' -ForegroundColor Yellow
+                foreach ($reason in @(LF-RepairBlockers $Scan.Base)) { Write-Host (' Lý do khóa: ' + $reason) -ForegroundColor Yellow }
+                break
+            }
+            try { LF-DeepReport $Scan 'before' }
+            catch { Write-Warning ('Không ghi được báo cáo trước sửa: ' + $_.Exception.Message) }
+            LF-Repair $Scan.Base -SkipRescan
+            if ($script:LFRepairChanged) {
+                $script:LFLastDeep=$null; $script:LFLastScan=$null; $script:LFProductCache=$null
+                Write-Host 'Registry đã thay đổi. Hãy quét lại để có kết luận mới.' -ForegroundColor Yellow
             }
         }
         'H' {

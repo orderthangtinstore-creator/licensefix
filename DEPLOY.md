@@ -22,7 +22,7 @@ The bootstrapper fetches `LicenseFix.ps1` from the release commit pinned in `lau
 
 Current SHA-256 of `LicenseFix.ps1` in this GitHub release:
 
-`9FD3A207534FFDCB9B83E40B910C9377CD4C57911EDFB95ABA927DCF95F331D9`
+`7FC3AD2ADE4B06BECAF57EA2C084BC00A1728974574AF7BFE7B247244BC96BEE`
 
 ## Optional Cloudflare domain
 

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\LicenseFix.ps1'), [Text.Encoding]::UTF8)
 $marker = "if (-not `$env:SystemRoot) { throw 'Windows only.' }"
 $index = $source.LastIndexOf($marker, [StringComparison]::Ordinal)
@@ -46,6 +46,95 @@ function LF-DeepSystem { param([string]$Tool) if($Tool -ne 'SFC'){throw 'Wrong r
 $script:answers.Enqueue('S')
 $null = LF-DeepAction $sample 6>&1
 if ($script:systemCalls -ne 1) { throw 'SFC action was not routed to its command handler.' }
+$script:answers.Enqueue('R')
+$noFix = (LF-DeepAction $sample 6>&1 | Out-String)
+if ($noFix -notmatch 'Chưa cần sao lưu' -or $noFix -notmatch 'Lý do khóa') {
+    throw 'No-op Registry action did not explain why it skipped repair.'
+}
+
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('LicenseFix-Regression-' + [guid]::NewGuid().ToString('N'))
+$LFBackups = Join-Path $testRoot 'Backups'
+[void](New-Item -ItemType Directory -Path $LFBackups -Force)
+try {
+    $regScan = [pscustomobject]@{
+        RepairEligible=$true; DomainJoinedOrUnknown=$false; WindowsLicensed=$true;
+        OfficeSafe=$true; KmsVolume=$false;
+        Issues=@([pscustomobject]@{
+            Id='KMS-001'; CanFix=$true; RegistryPath='HKLM:\SOFTWARE\LicenseFixRegression';
+            ValueName='KeyManagementServiceName'; ExpectedValue='localhost'
+        })
+    }
+    $script:repairEvents = New-Object 'System.Collections.Generic.List[string]'
+    function LF-ExportRegistryKey {
+        param([string]$NativePath,[string]$Destination)
+        [void]$script:repairEvents.Add('backup')
+        [IO.File]::WriteAllText($Destination, 'Windows Registry Editor Version 5.00')
+    }
+    function LF-ReadValue { return 'localhost' }
+    function Remove-ItemProperty {
+        param($LiteralPath,$Name,$ErrorAction)
+        [void]$script:repairEvents.Add('remove')
+    }
+    $script:answers.Enqueue('N')
+    $null = LF-Repair $regScan -SkipRescan 6>&1
+    if ($script:repairEvents.Count -ne 0) { throw 'Registry repair changed data after declining confirmation.' }
+    $script:answers.Enqueue('Y')
+    $null = LF-Repair $regScan -SkipRescan 6>&1
+    if (($script:repairEvents -join ',') -cne 'backup,remove' -or -not $script:LFRepairChanged) {
+        throw 'Registry repair did not back up before removing the value.'
+    }
+    $script:repairEvents.Clear()
+    function LF-ExportRegistryKey {
+        param([string]$NativePath,[string]$Destination)
+        [void]$script:repairEvents.Add('backup-failed')
+        throw 'Synthetic backup failure'
+    }
+    $script:answers.Enqueue('Y')
+    $backupFailure = (LF-Repair $regScan -SkipRescan 3>&1 6>&1 | Out-String)
+    if (($script:repairEvents -join ',') -cne 'backup-failed' -or $script:LFRepairChanged -or
+        $backupFailure -notmatch 'chưa sao lưu đầy đủ') {
+        throw 'Registry repair did not stop and explain backup failure.'
+    }
+
+    $hostsFile = Join-Path $testRoot 'hosts.fixture'
+    $originalHosts = [Text.Encoding]::ASCII.GetBytes("127.0.0.1 activation-v2.sls.microsoft.com`r`n")
+    $fixedHosts = [Text.Encoding]::ASCII.GetBytes('')
+    [IO.File]::WriteAllBytes($hostsFile, $originalHosts)
+    $script:hostsReview = [pscustomobject]@{
+        Path=$hostsFile; Bytes=$originalHosts; FixedBytes=$fixedHosts;
+        SafeLines=@('127.0.0.1 activation-v2.sls.microsoft.com'); ManualLines=@()
+    }
+    function LF-InspectHosts { return $script:hostsReview }
+    $hostsScan = [pscustomobject]@{ Base=[pscustomobject]@{ DomainJoinedOrUnknown=$false } }
+    $script:answers.Enqueue('N')
+    if (LF-RepairHosts $hostsScan) { throw 'Hosts repair ignored declined confirmation.' }
+    if (-not [IO.File]::ReadAllBytes($hostsFile).Length) { throw 'Hosts changed after declined confirmation.' }
+    $script:answers.Enqueue('Y')
+    if (-not (LF-RepairHosts $hostsScan)) { throw 'Hosts repair failed on synthetic fixture.' }
+    if ([IO.File]::ReadAllBytes($hostsFile).Length -ne 0) { throw 'Hosts fixture was not updated.' }
+    $hostsBackups = @(Get-ChildItem -LiteralPath $LFBackups -Filter 'hosts-*' -Directory)
+    if ($hostsBackups.Count -ne 1 -or
+        ([IO.File]::ReadAllBytes((Join-Path $hostsBackups[0].FullName 'hosts.before')) -join ',') -cne ($originalHosts -join ',')) {
+        throw 'Hosts original was not backed up before repair.'
+    }
+    [IO.File]::WriteAllBytes($hostsFile, $originalHosts)
+    $LFBackups = Join-Path $testRoot 'backup-blocker'
+    [IO.File]::WriteAllText($LFBackups, 'not a directory')
+    $script:answers.Enqueue('Y')
+    $hostsBackupFailure = (LF-RepairHosts $hostsScan 3>&1 6>&1 | Out-String)
+    if ($hostsBackupFailure -notmatch 'chưa sao lưu và xác minh' -or
+        ([IO.File]::ReadAllBytes($hostsFile) -join ',') -cne ($originalHosts -join ',')) {
+        throw 'Hosts repair did not stop before writing when backup failed.'
+    }
+} finally {
+    $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)
+    $expectedPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    if (-not $resolvedTestRoot.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+        -not ([IO.Path]::GetFileName($resolvedTestRoot)).StartsWith('LicenseFix-Regression-', [StringComparison]::Ordinal)) {
+        throw 'Refusing to remove a test directory outside the named temporary area.'
+    }
+    Remove-Item -LiteralPath $resolvedTestRoot -Recurse -Force
+}
 $script:answers.Enqueue('')
 $cancelledReveal = (LF-ShowFullWindowsKeys ([pscustomobject]@{Windows=@()}) 6>&1 | Out-String)
 if ($cancelledReveal -notmatch 'Đã hủy') { throw 'Full key reveal did not require confirmation.' }
@@ -104,4 +193,4 @@ if ($script:detailCalls -ne 1 -or $script:planCalls -ne 1 -or
     $script:actionCalls -ne 1 -or $script:answers.Count -ne 0) {
     throw 'Deep scan result did not route directly to detail, plan, and repair actions.'
 }
-Write-Host 'Menu, scan follow-up, refresh, and key regression checks passed.'
+Write-Host 'Menu, scan follow-up, guarded backup/repair, refresh, and key regression checks passed.'

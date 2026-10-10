@@ -1,4 +1,4 @@
-# LicenseFix v2.1.2-beta
+# LicenseFix v2.1.3-beta
 
 Công cụ kiểm tra bản quyền Windows/Office và xử lý **từng lỗi có bằng chứng** trên Windows PowerShell 5.1. Bản này vẫn cần kiểm thử trên máy ảo trước khi dùng thao tác sửa trên máy thật.
 
@@ -13,7 +13,7 @@ Launcher `launch.ps1` tải bản lõi theo commit phát hành đã ghim và ki�
 - Menu chính: kiểm tra, xem **kế hoạch và lý do khóa sửa** (mục 2), mở **danh sách hành động sửa được hỗ trợ** (mục 3), xuất JSON, `sfc /verifyonly`, sửa lỗi chuyên sâu, và xem/nhập key chính hãng (mục 7). Màn hình kết quả chờ Enter rồi mới quay lại.
 - Menu chuyên sâu: quét 19 nhóm rồi chọn ngay `2` (bằng chứng), `3` (kế hoạch), `4` (hành động sửa) hoặc `0` (quay về) tại màn hình kết quả. Các số này là lựa chọn thật, không còn bị lời nhắc Enter nuốt mất.
 - Kế hoạch xử lý liệt kê các giá trị Registry đủ điều kiện, những dòng `hosts` đủ điều kiện, cùng **lý do bị khóa**. Các mục cần xem/chưa quét được trình bày riêng; không coi chúng là lỗi đã xác nhận.
-- Mục `4` dẫn tới `R` (sao lưu rồi sửa đúng giá trị Registry đủ điều kiện), `H` (sao lưu rồi gỡ dòng hosts đủ điều kiện), `S` (chạy `sfc.exe /scannow`), `D` (chạy `dism.exe /Online /Cleanup-Image /RestoreHealth`) hoặc `K` (menu key). Các lệnh hệ thống chạy từ PowerShell sau xác nhận; kết quả phụ thuộc trạng thái máy. Phần lớn mục “CẦN XEM” chỉ là việc cần kiểm tra, không có lệnh sửa an toàn để chạy hàng loạt.
+- Mục `4` dẫn tới `R` (sao lưu rồi sửa đúng giá trị Registry đủ điều kiện), `H` (sao lưu rồi gỡ dòng hosts đủ điều kiện), `S` (chạy `sfc.exe /scannow`), `D` (chạy `dism.exe /Online /Cleanup-Image /RestoreHealth`) hoặc `K` (menu key). Với `R`/`H`, chương trình liệt kê thay đổi và hỏi `Y`; sau đó **tự sao lưu, xác minh bản sao và mới sửa**. Không cần tự sao lưu trước. Nếu không có mục đủ điều kiện hoặc sao lưu thất bại, chương trình giải thích và không sửa. Các lệnh hệ thống chạy từ PowerShell sau xác nhận; kết quả phụ thuộc trạng thái máy. Phần lớn mục “CẦN XEM” chỉ là việc cần kiểm tra, không có lệnh sửa an toàn để chạy hàng loạt.
 - Hành động chuyên sâu: `R` sửa giá trị Registry đã được phép sau khi xuất `.reg`; `H` sao lưu và gỡ riêng những dòng `hosts` chỉ ánh xạ máy chủ kích hoạt Microsoft; `S` chạy `sfc /scannow`; `D` chạy `DISM /RestoreHealth`; `K` mở menu key. Mỗi hành động thay đổi hệ thống yêu cầu xác nhận. Dòng `hosts` có thêm tên miền khác được giữ lại để kiểm tra thủ công.
 
 ## Key Windows và Office
@@ -31,7 +31,7 @@ Launcher `launch.ps1` tải bản lõi theo commit phát hành đã ghim và ki�
 - Dấu thời gian `data.dat`/`tokens.dat` chỉ là thông tin tham khảo, không chứng minh có crack và không được sửa để làm đẹp kết quả.
 - Công cụ không tự gỡ product key, xóa kho SPP, xóa lịch sử PowerShell hay kết luận quyền sở hữu bản quyền từ trạng thái kích hoạt.
 - Máy domain, KMS/Volume hợp lệ hoặc trạng thái cấp phép chưa xác minh có thể làm thao tác Registry bị khóa. Kế hoạch sẽ hiện lý do cụ thể.
-- Sao lưu Registry/`hosts` giúp hoàn tác các thay đổi tương ứng; nó không thể tự phục hồi một product key đầy đủ nếu key bị thay hoặc gỡ.
+- Sao lưu Registry/`hosts` giúp hoàn tác các thay đổi tương ứng; nó không thể tự phục hồi một product key đầy đủ nếu key bị thay hoặc gỡ. `SFC`/`DISM` không được bảo vệ bằng các bản sao này và có xác nhận riêng.
 - Nhập key là thay đổi riêng, không được hoàn tác bằng bản sao Registry/`hosts`. Hãy giữ chứng từ và key gốc trước khi thay. Không lưu key vào báo cáo JSON.
 - Chưa kiểm thử thao tác sửa trên Windows thật trong bản này. Hãy thử trên VM với cấu hình OEM/Retail, Microsoft 365, Office Volume và máy domain/KMS trước khi phát hành rộng.
 
