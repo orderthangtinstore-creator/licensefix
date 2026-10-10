@@ -1,35 +1,28 @@
-# LicenseFix v1.0.0 (preview)
+# LicenseFix v2.0.2-beta
 
-Windows 10/11 and Microsoft Office license diagnostics and **reviewable, confirmed cleanup of residual activation settings**.
+Công cụ kiểm tra bản quyền Windows/Office và xử lý **từng lỗi có bằng chứng** trên Windows PowerShell 5.1. Bản này vẫn cần kiểm thử trên máy ảo trước khi dùng thao tác sửa trên máy thật.
 
-> **Preview:** Not yet tested on Windows. Test `Scan` in a disposable VM before using `Repair` on a real PC. Do not use this tool to disguise license state or alter SPP timestamps. A green result from a third-party scanner does not establish legal license ownership.
+## Chạy bản cục bộ
 
-## Quick start (after files are published)
+Mở `START_HERE.cmd`, hoặc chạy `LicenseFix.ps1` bằng Windows PowerShell 5.1. Chế độ `Scan` chỉ đọc; các thao tác sửa yêu cầu quyền Administrator và xác nhận riêng.
 
-Open Windows PowerShell 5.1+:
+Launcher `launch.ps1` tải mã từ nhánh `main` và kiểm tra SHA-256 trước khi chạy. Chỉ dùng launcher trực tuyến sau khi **cả** `LicenseFix.ps1` và `launch.ps1` của cùng phiên bản đã được phát hành. Lệnh `irm ... | iex` thực thi launcher tải từ Internet; hãy xem nội dung và ghim commit khi cần mức bảo đảm cao hơn.
 
-```powershell
-irm https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/launch.ps1 | iex
-```
+## Menu
 
-The launcher downloads `LicenseFix.ps1` and verifies its SHA-256 before executing. **The first-stage launcher itself is unpinned**, so for high-assurance use inspect the script and pin the GitHub commit.
+- Menu chính: kiểm tra, xem đề xuất, sửa Registry có sao lưu, xuất JSON, `sfc /verifyonly`, và sửa lỗi chuyên sâu.
+- Menu chuyên sâu: quét 19 nhóm, xem bằng chứng theo số mục, xem kế hoạch xử lý, chọn hành động sửa, xuất báo cáo.
+- Kế hoạch xử lý liệt kê các giá trị Registry đủ điều kiện, những dòng `hosts` đủ điều kiện, cùng **lý do bị khóa**. Các mục cần xem/chưa quét được trình bày riêng; không coi chúng là lỗi đã xác nhận.
+- Hành động chuyên sâu: `R` sửa giá trị Registry đã được phép sau khi xuất `.reg`; `H` sao lưu và gỡ riêng những dòng `hosts` chỉ ánh xạ máy chủ kích hoạt Microsoft; `S` chạy `sfc /scannow`; `D` chạy `DISM /RestoreHealth`. Mỗi hành động yêu cầu xác nhận. Dòng `hosts` có thêm tên miền khác được giữ lại để kiểm tra thủ công.
 
-On an elevated PowerShell console, use the menu:
-- `1`: scan (read-only)
-- `2`: show remediation plan
-- `3`: backup + selectively remove verified residual Registry values, after typing `SUA`
-- `4`: export JSON scan report
-- `5`: `sfc /verifyonly`
+## Giới hạn an toàn
 
-The program **does not** automatically delete license keys, tamper with SPP `data.dat`/`tokens.dat`, change timestamps, or rewrite activation history.
+- Dấu thời gian `data.dat`/`tokens.dat` chỉ là thông tin tham khảo, không chứng minh có crack và không được sửa để làm đẹp kết quả.
+- Công cụ không tự gỡ product key, xóa kho SPP, xóa lịch sử PowerShell hay kết luận quyền sở hữu bản quyền từ trạng thái kích hoạt.
+- Máy domain, KMS/Volume hợp lệ hoặc trạng thái cấp phép chưa xác minh có thể làm thao tác Registry bị khóa. Kế hoạch sẽ hiện lý do cụ thể.
+- Sao lưu Registry/`hosts` giúp hoàn tác các thay đổi tương ứng; nó không thể tự phục hồi một product key đầy đủ nếu key bị thay hoặc gỡ.
+- Chưa kiểm thử thao tác sửa trên Windows thật trong bản này. Hãy thử trên VM với cấu hình OEM/Retail, Microsoft 365, Office Volume và máy domain/KMS trước khi phát hành rộng.
 
-## Components
+## Nguồn tham khảo
 
-- `LicenseFix.ps1` – diagnostics and scoped remediation.
-- `launch.ps1` – online bootstrap with pinned SHA-256 of the second-stage script.
-- `START_HERE.cmd` – local launcher.
-- `CHECKLIST_19.md` – relationship to the 19 checks in License Info.
-- `deploy/cloudflare-worker.js` – optional Cloudflare Worker for a short domain.
-- `DEPLOY.md` – online deployment and update guidance.
-
-Independent community utility. Not affiliated with Microsoft or [License Info](https://github.com/tiennnict/license.info.vn); that upstream project is licensed Apache-2.0. No code from the upstream repo is embedded here. No warranty is made regarding activation status.
+Giao diện bằng chứng và luồng đi từ kết luận tới hành động được nghiên cứu từ [license.info.vn](https://github.com/tiennnict/license.info.vn) (Apache-2.0). LicenseFix không nhúng mã nguồn của dự án đó và không đồng nhất mọi heuristic hay thao tác xóa của họ với quy tắc sửa tự động của mình.

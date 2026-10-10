@@ -1,24 +1,21 @@
-# LicenseFix Deep Repair 2.0 beta
+# LicenseFix v2.0.2-beta — sửa lỗi chuyên sâu
 
 Bản thử nghiệm kiểm tra **19 nhóm** tương ứng phạm vi License Info. Không có nghĩa đã triển khai đầy đủ toàn bộ quy tắc gốc; phần nào chưa đủ bằng chứng sẽ được báo **NOT_CHECKED**, thay vì tô xanh.
 
-## Dùng thử trước khi phát hành chính thức
+## Cách mở
 
-Tải và đọc `LicenseFix.ps1` từ nhánh `feature/deep-repair-v2`, sau đó thử trên Windows 10/11 VM. Menu số **6** hoặc tham số `-Mode Deep` mở chế độ mới. Launcher beta tại:
+Đọc mã nguồn rồi mở `START_HERE.cmd`, hoặc chạy `LicenseFix.ps1 -Mode Deep` trong Windows PowerShell 5.1. Menu số **6** cũng mở chế độ này. Bản beta cần được thử trên máy ảo trước khi sửa trên máy thật.
 
-```powershell
-irm https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/feature/deep-repair-v2/launch.ps1 | iex
-```
-
-*Lệnh có iex thực thi script tải từ Internet. Chỉ dùng khi bạn kiểm soát và tin cậy nội dung.* Domain `kwo.thangtinstore.com` vẫn đang phục vụ launcher chính trên nhánh `main` cho tới khi kiểm thử và merge.
+`launch.ps1` tải mã từ nhánh `main` và kiểm tra SHA-256 của `LicenseFix.ps1`. Hãy đọc launcher trước khi chạy; bản thân launcher trực tuyến không được ghim vào một commit.
 
 ## Hành động
 
 1. Quét và phân loại các kiểm tra PASS/WARN/REVIEW/NOT_CHECKED.
-2. Xem kế hoạch sửa Registry (dry-run).
-3. Sao lưu và chỉ xóa các giá trị KMS/NoGenTicket đã đủ điều kiện theo chính sách an toàn của v1, có xác nhận gõ `SUA`, báo cáo JSON trước/sau.
-4. SFC/DISM theo xác nhận riêng, không tự kích hoạt.
-5. Xuất báo cáo JSON tại `C:\ProgramData\LicenseFix\Reports`.
+2. Xem kế hoạch Registry/`hosts`, lý do khóa sửa và đề xuất cho từng mục.
+3. Sao lưu và chỉ xóa các giá trị Registry KMS đã đủ điều kiện, sau xác nhận gõ `SUA`. Chính sách `NoGenTicket` chỉ để xem xét, không tự xóa.
+4. Sao lưu rồi gỡ riêng những dòng `hosts` chỉ ánh xạ máy chủ kích hoạt Microsoft, sau xác nhận gõ `HOSTS`; dòng có tên miền khác được giữ nguyên.
+5. SFC/DISM theo xác nhận riêng, không tự kích hoạt.
+6. Xuất báo cáo JSON tại `C:\ProgramData\LicenseFix\Reports`.
 
 **Không** sửa đổi timestamp `data.dat`, `tokens.dat`, can thiệp registry để che giấu giấy phép, xóa lịch sử kiểm toán, xóa key OEM/Volume, hoặc bảo đảm 19/19 màu xanh.
 

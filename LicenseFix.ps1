@@ -1,16 +1,16 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
-LicenseFix v2.0.1-beta - Windows/Office license diagnostics and scoped remediation.
+LicenseFix v2.0.2-beta - Windows/Office license diagnostics and scoped remediation.
 Preview build: test on a lab PC before performing repairs.
 Independent project. Not affiliated with Microsoft or license.info.vn.
-Repairs only specifically reviewed Registry values after successful backups.
+Repairs only specifically reviewed settings after successful backups and confirmation.
 Never edits SPP data.dat/tokens.dat, license keys, history, or timestamps.
 #>
 [CmdletBinding()]
 param([ValidateSet('Menu','Scan','Plan','Repair','Export','Deep')][string]$Mode='Menu')
 
 $ErrorActionPreference = 'Stop'
-$LFVersion = '2.0.1-beta'
+$LFVersion = '2.0.2-beta'
 $LFWindowsId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 $LFOfficeId = '0ff1ce15-a989-479d-af46-f275c6370663'
 $LFBackups = Join-Path $env:ProgramData 'LicenseFix\Backups'
@@ -140,7 +140,7 @@ function LF-Scan {
     $policy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Software Protection Platform'
     $noGen = LF-ReadValue $policy 'NoGenTicket'
     if ([string]$noGen -eq '1') {
-        LF-AddIssue $issues 'POL-001' 'Shared' 'REVIEW' 'Chính sách NoGenTicket=1 cần xác minh' $policy $safe $policy 'NoGenTicket' '1'
+        LF-AddIssue $issues 'POL-001' 'Shared' 'REVIEW' 'Chính sách NoGenTicket=1 cần xác minh' $policy $false $policy 'NoGenTicket' '1'
     }
 
     $store = Join-Path $env:SystemRoot 'System32\spp\store\2.0'
@@ -205,14 +205,26 @@ function LF-NativePath([string]$Path) {
     }
     throw "Đường dẫn Registry không được hỗ trợ: $Path"
 }
+function LF-RepairBlockers($Scan) {
+    $reasons = New-Object 'System.Collections.Generic.List[string]'
+    if ($Scan.DomainJoinedOrUnknown) { [void]$reasons.Add('Máy thuộc domain hoặc chưa xác minh được trạng thái domain.') }
+    if (-not $Scan.WindowsLicensed) { [void]$reasons.Add('Chưa xác minh được Windows đã kích hoạt.') }
+    if (-not $Scan.OfficeSafe) { [void]$reasons.Add('Có sản phẩm Office cần xác minh giấy phép.') }
+    if ($Scan.KmsVolume) { [void]$reasons.Add('Có giấy phép KMS/Volume có thể hợp lệ của tổ chức.') }
+    return @($reasons.ToArray())
+}
 function LF-Repair($Scan,[switch]$SkipRescan) {
     $script:LFRepairChanged=$false
     LF-Title 'SAO LƯU VÀ SỬA REGISTRY'
     if (-not (LF-Admin)) { Write-Warning 'Hãy mở PowerShell với quyền Administrator để sửa lỗi.'; return }
-    if (-not $Scan.RepairEligible) { Write-Warning 'Đã khóa sửa: cần đối chiếu giấy phép hoặc chính sách domain/KMS. Chưa thay đổi dữ liệu.'; return }
+    if (-not $Scan.RepairEligible) {
+        Write-Warning 'Đã khóa sửa Registry. Chưa thay đổi dữ liệu.'
+        foreach ($reason in @(LF-RepairBlockers $Scan)) { Write-Host (' - ' + $reason) -ForegroundColor Yellow }
+        return
+    }
     $fixes = @($Scan.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
     if ($fixes.Count -eq 0) { Write-Host 'Không có giá trị Registry đủ điều kiện xử lý.'; return }
-    foreach ($f in $fixes) { Write-Host ("PLAN {0}: {1} / {2} = {3}" -f $f.Id,$f.RegistryPath,$f.ValueName,$f.ExpectedValue) }
+    foreach ($f in $fixes) { Write-Host ("SẼ XÓA {0}: {1} / {2} = {3}" -f $f.Id,$f.RegistryPath,$f.ValueName,$f.ExpectedValue) }
     Write-Warning 'Chỉ xóa giá trị đã liệt kê. Không xóa cả khóa Registry hoặc kho SPP.'
     if ((Read-Host 'Gõ SUA để sao lưu và chỉ xóa các giá trị đã xác minh') -cne 'SUA') {
         Write-Host 'Đã hủy, không thay đổi dữ liệu.'; return
@@ -265,13 +277,13 @@ function LF-DeepInspect {
     )
     $items=New-Object 'System.Collections.Generic.List[object]'
     for($i=1;$i -le 19;$i++){
-      [void]$items.Add((LF-DeepItem $i $titles[$i-1] 'NOT_CHECKED' 'Chưa có bằng chứng đầy đủ.' 'Cần kiểm tra theo nguồn chính thức.'))
+      [void]$items.Add((LF-DeepItem $i $titles[$i-1] 'NOT_CHECKED' 'Chưa có bằng chứng đầy đủ.' 'Chưa có phép kiểm đủ tin cậy; không sửa tự động.'))
     }
     $rows=$items.ToArray()
     try {
       $os=Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-      $rows[0].Status='PASS';$rows[0].Evidence=[string]$os.Caption
-      $rows[0].Action='Không hiển thị product key.'
+      $rows[0].Status='REVIEW';$rows[0].Evidence=([string]$os.Caption + '; chưa kiểm tra key OEM trong BIOS.')
+      $rows[0].Action='Đối chiếu phiên bản Windows với chứng từ/OEM BIOS; không hiển thị product key.'
     }catch{}
     $rows[1].Status=if($base.WindowsLicensed){'PASS'}else{'WARN'}
     $rows[1].Evidence="Licensed=$($base.WindowsLicensed); Channel=$($base.WindowsChannel)"
@@ -375,7 +387,7 @@ function LF-DeepDisplay($Scan){
       Write-Host (" {0,2}. {1,-10} {2}" -f $it.Id,$status,$it.Name) -ForegroundColor $color
     }
     Write-Host ('-'*56) -ForegroundColor DarkGray
-    Write-Host ' Chọn mục 2 để xem bằng chứng của từng hạng mục.' -ForegroundColor Cyan
+    Write-Host ' Chọn 2 để xem bằng chứng; chọn 3 để xem cách xử lý và lý do khóa sửa.' -ForegroundColor Cyan
     if($n -or $r){Write-Host ' Chưa thể kết luận đạt đầy đủ 19 nhóm.' -ForegroundColor Yellow}
 }
 function LF-DeepDetail($Scan,[int]$Id) {
@@ -388,6 +400,131 @@ function LF-DeepDetail($Scan,[int]$Id) {
     Write-Host ("  {0}" -f $it.Evidence)
     Write-Host ' Đề xuất:' -ForegroundColor Gray
     Write-Host ("  {0}" -f $it.Action)
+    if ($it.Status -eq 'NOT_CHECKED') {
+        Write-Host ' Chưa có phép kiểm đủ tin cậy cho mục này; không có thao tác sửa tự động.' -ForegroundColor Yellow
+    }
+}
+function LF-InspectHosts {
+    # Latin-1 maps each byte to itself, preserving existing UTF-8/ANSI bytes and line endings.
+    # UTF-16 hosts files need manual review; rewriting one would change its encoding.
+    $path = Join-Path $env:windir 'System32\drivers\etc\hosts'
+    $bytes = [IO.File]::ReadAllBytes($path)
+    if ($bytes -contains 0) { throw 'Tệp hosts có byte NUL/UTF-16; cần kiểm tra thủ công.' }
+    $encoding = [Text.Encoding]::GetEncoding(28591)
+    $content = $encoding.GetString($bytes)
+    $targetNames = @('activation-v2.sls.microsoft.com','validation-v2.sls.microsoft.com')
+    $safe = New-Object 'System.Collections.Generic.List[string]'
+    $manual = New-Object 'System.Collections.Generic.List[string]'
+    $fixed = New-Object Text.StringBuilder
+    foreach ($match in [regex]::Matches($content, '([^\r\n]*)(\r\n|\n|\r|$)')) {
+        if ($match.Length -eq 0) { continue }
+        $line = $match.Groups[1].Value
+        $body = ($line -split '#', 2)[0].Trim()
+        $parts = @($body -split '\s+' | Where-Object { $_ })
+        $remove = $false
+        if ($parts.Count -ge 2) {
+            $address = $null
+            if ([Net.IPAddress]::TryParse($parts[0], [ref]$address)) {
+                $names = @($parts[1..($parts.Count - 1)] | ForEach-Object { $_.TrimEnd('.').ToLowerInvariant() })
+                $hits = @($names | Where-Object { $targetNames -contains $_ })
+                if ($hits.Count -gt 0) {
+                    if ($hits.Count -eq $names.Count) {
+                        [void]$safe.Add($line)
+                        $remove = $true
+                    } else { [void]$manual.Add($line) }
+                }
+            }
+        }
+        if (-not $remove) { [void]$fixed.Append($match.Value) }
+    }
+    return [pscustomobject]@{
+        Path=$path; Bytes=$bytes; SafeLines=@($safe.ToArray()); ManualLines=@($manual.ToArray());
+        FixedBytes=$encoding.GetBytes($fixed.ToString())
+    }
+}
+function LF-RepairHosts($Scan) {
+    if (-not (LF-Admin)) { Write-Warning 'Cần quyền Administrator để sửa tệp hosts.'; return $false }
+    if ($Scan.Base.DomainJoinedOrUnknown) {
+        Write-Warning 'Máy thuộc domain hoặc chưa xác minh được domain. Hãy hỏi quản trị viên trước khi sửa hosts.'
+        return $false
+    }
+    try { $review = LF-InspectHosts }
+    catch { Write-Warning $_.Exception.Message; return $false }
+    if ($review.ManualLines.Count) {
+        Write-Warning 'Có dòng hosts chứa thêm tên miền khác; giữ nguyên để kiểm tra thủ công:'
+        foreach ($line in $review.ManualLines) { Write-Host ('  ' + $line) -ForegroundColor Yellow }
+    }
+    if (-not $review.SafeLines.Count) { Write-Host 'Không có dòng hosts riêng cho máy chủ kích hoạt cần xử lý.'; return $false }
+    Write-Host ' Các dòng dự kiến gỡ khỏi hosts:' -ForegroundColor Yellow
+    foreach ($line in $review.SafeLines) { Write-Host ('  ' + $line) }
+    if ((Read-Host 'Gõ HOSTS để sao lưu và gỡ đúng các dòng trên') -cne 'HOSTS') {
+        Write-Host 'Đã hủy; tệp hosts không thay đổi.'
+        return $false
+    }
+    try {
+        $current = [IO.File]::ReadAllBytes($review.Path)
+        $hash = [Security.Cryptography.SHA256]::Create()
+        try {
+            $before = [BitConverter]::ToString($hash.ComputeHash($review.Bytes))
+            $now = [BitConverter]::ToString($hash.ComputeHash($current))
+        } finally { $hash.Dispose() }
+        if ($before -cne $now) { throw 'Tệp hosts đã thay đổi sau khi xem trước; hãy quét lại.' }
+        $backup = Join-Path $LFBackups ('hosts-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,6))
+        [void](New-Item -ItemType Directory -Path $backup -Force)
+        $copy = Join-Path $backup 'hosts.before'
+        Copy-Item -LiteralPath $review.Path -Destination $copy -ErrorAction Stop
+        if (-not (Test-Path -LiteralPath $copy)) { throw 'Sao lưu hosts thất bại; chưa sửa dữ liệu.' }
+        if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -cne $before.Replace('-','')) {
+            throw 'Bản sao lưu hosts không khớp dữ liệu gốc; chưa sửa dữ liệu.'
+        }
+        try {
+            [IO.File]::WriteAllBytes($review.Path, $review.FixedBytes)
+            $written = [IO.File]::ReadAllBytes($review.Path)
+            $verifyHash = [Security.Cryptography.SHA256]::Create()
+            try {
+                $expected = [BitConverter]::ToString($verifyHash.ComputeHash($review.FixedBytes))
+                $actual = [BitConverter]::ToString($verifyHash.ComputeHash($written))
+            } finally { $verifyHash.Dispose() }
+            if ($expected -cne $actual) { throw 'Không xác minh được dữ liệu hosts sau khi ghi.' }
+        }
+        catch {
+            Copy-Item -LiteralPath $copy -Destination $review.Path -Force -ErrorAction SilentlyContinue
+            throw
+        }
+        Write-Host ("Đã gỡ {0} dòng. Bản sao lưu: {1}" -f $review.SafeLines.Count,$copy) -ForegroundColor Green
+        return $true
+    } catch { Write-Warning ('Không sửa được hosts: ' + $_.Exception.Message); return $false }
+}
+function LF-DeepPlan($Scan) {
+    LF-Title 'KẾ HOẠCH XỬ LÝ'
+    $fixes = @($Scan.Base.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
+    Write-Host (" [R] Registry: {0} giá trị đủ điều kiện xử lý." -f $fixes.Count) -ForegroundColor $(if($fixes.Count){'Green'}else{'Yellow'})
+    if ($fixes.Count) {
+        foreach ($f in $fixes) { Write-Host ("     {0}: {1} / {2}" -f $f.Id,$f.RegistryPath,$f.ValueName) }
+    } else {
+        $blockers = @(LF-RepairBlockers $Scan.Base)
+        if ($blockers.Count) { foreach ($reason in $blockers) { Write-Host ('     Khóa sửa: ' + $reason) -ForegroundColor Yellow } }
+        else { Write-Host '     Không có cấu hình Registry bất thường thuộc phạm vi sửa đã hỗ trợ.' -ForegroundColor Gray }
+    }
+    try {
+        $hosts = LF-InspectHosts
+        if ($Scan.Base.DomainJoinedOrUnknown) {
+            Write-Host ' [H] Hosts: khóa sửa vì máy thuộc domain hoặc chưa xác minh được domain.' -ForegroundColor Yellow
+        } else {
+            Write-Host (" [H] Hosts: {0} dòng có thể gỡ sau sao lưu và xác nhận." -f $hosts.SafeLines.Count) -ForegroundColor $(if($hosts.SafeLines.Count){'Green'}else{'Gray'})
+        }
+        if ($hosts.ManualLines.Count) { Write-Host ("     {0} dòng chứa tên miền khác cần kiểm tra thủ công." -f $hosts.ManualLines.Count) -ForegroundColor Yellow }
+    } catch { Write-Host (' [H] Hosts: ' + $_.Exception.Message) -ForegroundColor Yellow }
+    Write-Host ' [S] SFC /scannow: sửa tệp hệ thống khi có bằng chứng lỗi toàn vẹn.' -ForegroundColor White
+    Write-Host ' [D] DISM /RestoreHealth: sửa kho thành phần Windows khi cần.' -ForegroundColor White
+    Write-Host ''
+    Write-Host ' Các mục cảnh báo, cần xem hoặc chưa quét:' -ForegroundColor Cyan
+    foreach ($it in @($Scan.Items | Where-Object { $_.Status -ne 'PASS' })) {
+        $label = switch ($it.Status) { 'WARN' {'CẢNH BÁO'} 'REVIEW' {'CẦN XEM'} default {'CHƯA QUÉT'} }
+        Write-Host ("  {0,2}. {1,-11} {2}" -f $it.Id,$label,$it.Name) -ForegroundColor $(if($it.Status -eq 'WARN'){'Red'}else{'Yellow'})
+        Write-Host ('      ' + $it.Action) -ForegroundColor Gray
+    }
+    Write-Host ' Chọn mục 2 để xem bằng chứng. Mục CẦN XEM hoặc CHƯA QUÉT không tự chứng minh có lỗi.' -ForegroundColor Yellow
 }
 function LF-DeepReport($Scan,[string]$Stage='scan'){
     New-Item -ItemType Directory -Force -Path $LFReports | Out-Null
@@ -396,31 +533,32 @@ function LF-DeepReport($Scan,[string]$Stage='scan'){
     Write-Host ('Đã ghi báo cáo: '+$path) -ForegroundColor Green
 }
 function LF-DeepSystem([string]$Tool){
-    if(-not (LF-Admin)){Write-Warning 'Cần chạy PowerShell với quyền Administrator.';return}
+    if(-not (LF-Admin)){Write-Warning 'Cần chạy PowerShell với quyền Administrator.';return $false}
     if($Tool -eq 'SFC'){
-      if((Read-Host 'Gõ SFC để xác nhận sfc /scannow (có thể sửa file hệ thống)') -cne 'SFC'){return}
-      & sfc.exe /scannow
+      if((Read-Host 'Gõ SFC để xác nhận sfc /scannow (có thể sửa file hệ thống)') -cne 'SFC'){return $false}
+      & sfc.exe /scannow | Out-Host
     }else{
-      if((Read-Host 'Gõ DISM để xác nhận DISM /RestoreHealth (có thể sửa component store)') -cne 'DISM'){return}
-      & dism.exe /Online /Cleanup-Image /RestoreHealth
+      if((Read-Host 'Gõ DISM để xác nhận DISM /RestoreHealth (có thể sửa component store)') -cne 'DISM'){return $false}
+      & dism.exe /Online /Cleanup-Image /RestoreHealth | Out-Host
     }
     Write-Host ('Exit code: '+$LASTEXITCODE)
     Write-Warning 'Sau sửa, phải kiểm tra lại trạng thái bản quyền và khởi động lại nếu hệ thống yêu cầu.'
+    return $true
 }
 function LF-DeepMenu {
   $scan=$null
   do {
+    Clear-Host
     LF-Title 'SỬA LỖI CHUYÊN SÂU'
     Write-Host ' 1. Quét và xem tổng quan'
     Write-Host ' 2. Xem chi tiết theo số mục'
-    Write-Host ' 3. Xem trước kế hoạch sửa'
-    Write-Host ' 4. Sao lưu và sửa Registry có xác nhận'
-    Write-Host ' 5. Công cụ SFC / DISM'
-    Write-Host ' 6. Xuất báo cáo JSON'
+    Write-Host ' 3. Xem kế hoạch xử lý và lý do khóa sửa'
+    Write-Host ' 4. Thực hiện sửa lỗi được hỗ trợ'
+    Write-Host ' 5. Xuất báo cáo JSON'
     Write-Host ' 0. Quay về'
     $choice=Read-Host 'Chọn'
     switch($choice) {
-      '1' {$scan=LF-DeepInspect;LF-DeepDisplay $scan}
+      '1' {Clear-Host;$scan=LF-DeepInspect;LF-DeepDisplay $scan}
       '2' {
         if(-not $scan){Write-Host 'Chưa quét. Hãy chọn 1 trước.' -ForegroundColor Yellow}
         else {
@@ -432,26 +570,34 @@ function LF-DeepMenu {
       }
       '3' {
         if(-not $scan){$scan=LF-DeepInspect}
-        $fix=@($scan.Base.Issues|Where-Object CanFix)
-        if($fix.Count){$fix|Select-Object Id,Scope,Reason|Format-Table -AutoSize|Out-Host}
-        else{Write-Host 'Không có mục Registry đủ điều kiện sửa.' -ForegroundColor Yellow}
+        LF-DeepPlan $scan
       }
       '4' {
         if(-not $scan){$scan=LF-DeepInspect}
-        LF-DeepReport $scan 'before'
-        LF-Repair $scan.Base -SkipRescan
-        if($script:LFRepairChanged){
-          $scan=LF-DeepInspect
-          LF-DeepReport $scan 'after'
-          LF-DeepDisplay $scan
-        } else {Write-Host 'Không có thay đổi; bỏ qua quét lại.' -ForegroundColor Gray}
+        LF-DeepPlan $scan
+        Write-Host ''
+        $opt=Read-Host 'Chọn R=Registry, H=Hosts, S=SFC, D=DISM, 0=Hủy'
+        switch ($opt.ToUpperInvariant()) {
+          'R' {
+            $eligible = @($scan.Base.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
+            if (-not $eligible.Count) {
+              Write-Host 'Không có giá trị Registry đủ điều kiện sửa; xem lý do khóa ở kế hoạch trên.' -ForegroundColor Yellow
+            } else {
+              LF-DeepReport $scan 'before'
+              LF-Repair $scan.Base -SkipRescan
+              if ($script:LFRepairChanged) { $scan=$null; Write-Host 'Registry đã thay đổi. Hãy quét lại trước khi xem kết luận mới.' -ForegroundColor Yellow }
+            }
+          }
+          'H' {
+            if (LF-RepairHosts $scan) { $scan=$null; Write-Host 'Hosts đã thay đổi. Hãy quét lại trước khi xem kết luận mới.' -ForegroundColor Yellow }
+          }
+          'S' {if (LF-DeepSystem 'SFC') { $scan=$null }}
+          'D' {if (LF-DeepSystem 'DISM') { $scan=$null }}
+          '0' {Write-Host 'Đã hủy.'}
+          default {Write-Warning 'Lựa chọn không hợp lệ.'}
+        }
       }
-      '5' {
-        Write-Host ' 1. SFC /scannow   2. DISM /RestoreHealth   0. Hủy'
-        $opt=Read-Host 'Chọn'
-        if($opt -eq '1'){LF-DeepSystem 'SFC'}elseif($opt -eq '2'){LF-DeepSystem 'DISM'}
-      }
-      '6' {if(-not $scan){$scan=LF-DeepInspect};LF-DeepReport $scan 'manual'}
+      '5' {if(-not $scan){$scan=LF-DeepInspect};LF-DeepReport $scan 'manual'}
       '0' {}
       default {Write-Warning 'Lựa chọn không hợp lệ.'}
     }
@@ -460,6 +606,7 @@ function LF-DeepMenu {
 }
 function LF-Menu {
   do {
+    Clear-Host
     LF-Title 'MENU CHÍNH'
     Write-Host ' 1. Kiểm tra bản quyền Windows / Office'
     Write-Host ' 2. Xem đề xuất sửa lỗi'

@@ -1,30 +1,30 @@
-# LicenseFix v1.0.0 – đối chiếu 19 nhóm kiểm tra License Info
+# LicenseFix v2.0.2-beta – đối chiếu 19 nhóm kiểm tra License Info
 
 Đối chiếu về **phạm vi chức năng**, không sao chép kết luận hay bảo đảm 19/19 mục luôn xanh. Nguồn tham khảo: [tiennnict/license.info.vn](https://github.com/tiennnict/license.info.vn) (Apache-2.0).
 
-| # | Nhóm kiểm tra | Hỗ trợ trong LicenseFix 1.0 | Can thiệp |
+| # | Nhóm kiểm tra | Hỗ trợ trong LicenseFix 2.0.2-beta | Can thiệp |
 |---|---|---|---|
 | 1 | Thông tin Windows và OEM BIOS | Một phần (trạng thái Windows), chưa đọc key BIOS | Không |
 | 2 | Windows WMI/SPP | Có | Không gỡ key |
 | 3 | Office WMI / OSPP | Một phần; Microsoft 365 vNext có thể không hiển thị | Không gỡ key |
 | 4 | KMS Windows / Office | Có: Registry và WMI | Xóa riêng giá trị Registry bất thường khi đủ điều kiện |
-| 5 | Cổng KMS 1688, giả lập cục bộ | Chưa | Không |
-| 6 | Tệp/thư mục công cụ kích hoạt | Chưa | Không |
-| 7 | Chữ ký và toàn vẹn SPP | Chưa; có lệnh SFC /verifyonly thủ công | Không |
+| 5 | Cổng KMS 1688, giả lập cục bộ | Kiểm tra cổng lắng nghe; chưa xác minh tiến trình | Không |
+| 6 | Tệp/thư mục công cụ kích hoạt | Kiểm tra một số vị trí phổ biến; chưa kết luận từ tên | Không |
+| 7 | Chữ ký và toàn vẹn SPP | Kiểm tra chữ ký một tệp đại diện; có SFC/DISM thủ công | SFC/DISM sau xác nhận |
 | 8 | TSforge / KMS38 Windows | Chưa | Không |
 | 9 | Digital License / GenuineTicket | Chưa | Không |
-| 10 | Rearm | Chưa | Không |
+| 10 | Rearm | Hiển thị số liệu WMI để tham khảo | Không |
 | 11 | Scheduled Tasks | Có: nhận diện một số tên cần kiểm tra | Không tự xóa |
-| 12 | Defender / exclusions | Chưa | Không |
+| 12 | Defender / exclusions | Kiểm tra một số tên ngoại lệ; chưa xét lịch sử Defender | Không |
 | 13 | PowerShell history | Chưa | Không xóa lịch sử |
-| 14 | Hosts chặn kích hoạt | Chưa | Không |
+| 14 | Hosts chặn kích hoạt | Kiểm tra tên miền kích hoạt Microsoft | Gỡ riêng dòng đủ điều kiện sau sao lưu và xác nhận |
 | 15 | Thời gian `data.dat` / `tokens.dat` | Có: hiển thị thông tin | Không thay đổi timestamp / kho SPP |
-| 16 | Ohook Office | Chưa | Không |
+| 16 | Ohook Office | Kiểm tra hai thư mục VFS phổ biến; chưa xác minh chữ ký DLL | Không |
 | 17 | KMS Office / OSPP / ClickToRun | Có: Registry, WMI | Xóa riêng giá trị Registry khi đủ điều kiện |
 | 18 | Retail sang Volume Office | Chưa | Không |
 | 19 | TSforge Office | Chưa | Không |
 
-**Giới hạn an toàn:** công cụ khóa chức năng sửa nếu Windows chưa xác nhận Licensed, có sản phẩm KMS/Volume, máy thuộc domain hoặc không xác minh được domain, hay một giấy phép Office phát hiện được chưa được xác nhận hợp lệ. Nó chỉ tạo đề xuất từ bằng chứng hiện tại, sao lưu mọi khóa Registry trước khi thay đổi, đòi gõ `SUA`, và quét lại.
+**Giới hạn an toàn:** công cụ khóa sửa Registry nếu Windows chưa xác nhận Licensed, có sản phẩm KMS/Volume, máy thuộc domain hoặc không xác minh được domain, hay một giấy phép Office phát hiện được chưa xác nhận hợp lệ. Chính sách `NoGenTicket` không tự xóa. Chỉ các giá trị Registry KMS đủ điều kiện mới được xử lý sau sao lưu và xác nhận `SUA`. Sửa `hosts` có điều kiện riêng và xác nhận `HOSTS`.
 
 **Không dùng để che giấu:** không sửa timestamps, không xóa lịch sử hay dữ liệu cấp phép nhằm đánh lừa công cụ kiểm tra. Không khẳng định nguồn gốc pháp lý của bản quyền.
 

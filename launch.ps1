@@ -1,12 +1,12 @@
-# LicenseFix v2.0.1-beta - verified online launcher (PowerShell 5.1+, Windows only)
+﻿# LicenseFix v2.0.2-beta - verified online launcher (PowerShell 5.1+, Windows only)
 # Usage:
 # irm https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/launch.ps1 | iex
 # This is independent of license.info.vn and does not modify Windows until user confirms inside LicenseFix.
 
 $ErrorActionPreference = 'Stop'
-$lfVersion = '2.0.1-beta'
+$lfVersion = '2.0.2-beta'
 $lfSource = 'https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/LicenseFix.ps1'
-$lfExpectedSHA256 = '828E6FF99616F9C558C8A754439ACD64667B9FB7E0B1B48FFE6AED27E73C2B5E'
+$lfExpectedSHA256 = 'DC78DD88D366BD3B3DB892FD9B8C0D32079ACCD6460D0C5BDF85B5EBE6E12221'
 
 try {
     if ($PSVersionTable.PSVersion.Major -lt 5) {
