@@ -15,7 +15,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tokens = $null
           $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\LicenseFix.ps1').Path, [ref]$tokens, [ref]$errors)
+          $source = [IO.File]::ReadAllText((Resolve-Path '.\LicenseFix.ps1').Path, [Text.Encoding]::UTF8)
+          [void][System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
           if (@($errors).Count -gt 0) {
             foreach ($e in $errors) { Write-Host ($e.ToString()) }
             throw 'PowerShell syntax errors'
