@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-LicenseFix v2.0.0-beta - Windows/Office license diagnostics and scoped remediation.
+LicenseFix v2.0.1-beta - Windows/Office license diagnostics and scoped remediation.
 Preview build: test on a lab PC before performing repairs.
 Independent project. Not affiliated with Microsoft or license.info.vn.
 Repairs only specifically reviewed Registry values after successful backups.
@@ -10,7 +10,7 @@ Never edits SPP data.dat/tokens.dat, license keys, history, or timestamps.
 param([ValidateSet('Menu','Scan','Plan','Repair','Export','Deep')][string]$Mode='Menu')
 
 $ErrorActionPreference = 'Stop'
-$LFVersion = '2.0.0-beta'
+$LFVersion = '2.0.1-beta'
 $LFWindowsId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 $LFOfficeId = '0ff1ce15-a989-479d-af46-f275c6370663'
 $LFBackups = Join-Path $env:ProgramData 'LicenseFix\Backups'
@@ -21,7 +21,7 @@ $LFLastScan = $null
 
 function LF-Title([string]$Text) {
     Write-Host ''
-    Write-Host ('=' * 68) -ForegroundColor Cyan
+    Write-Host ('=' * 56) -ForegroundColor Cyan
     Write-Host (' LicenseFix ' + $LFVersion + ' | ' + $Text) -ForegroundColor Cyan
     Write-Host ('=' * 68) -ForegroundColor Cyan
 }
@@ -53,6 +53,8 @@ function LF-AddIssue($Issues,[string]$Id,[string]$Scope,[string]$Level,
     })
 }
 function LF-Scan {
+    $watch=[Diagnostics.Stopwatch]::StartNew()
+    Write-Host ' [1/3] Đang xác minh giấy phép...' -ForegroundColor DarkCyan
     $issues = New-Object 'System.Collections.Generic.List[object]'
     $notes = New-Object 'System.Collections.Generic.List[string]'
     $domain = $true  # Fail closed if domain membership query fails.
@@ -60,9 +62,15 @@ function LF-Scan {
     catch { [void]$notes.Add('Could not query domain membership: all repairs disabled.') }
     $all = @()
     try {
-        $all = @(Get-CimInstance SoftwareLicensingProduct -ErrorAction Stop | Where-Object {
-            $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId)
-        })
+        $filter = "ApplicationID='$LFWindowsId' OR ApplicationID='$LFOfficeId'"
+        try {
+            $all = @(Get-CimInstance -ClassName SoftwareLicensingProduct -Filter $filter -ErrorAction Stop |
+              Where-Object { $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId) })
+        } catch {
+            [void]$notes.Add('WMI không hỗ trợ bộ lọc; dùng truy vấn đầy đủ.')
+            $all = @(Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop |
+              Where-Object { $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId) })
+        }
     } catch { [void]$notes.Add('Failed to read SPP license products; repairs disabled.') }
     $win = @($all | Where-Object ApplicationID -EQ $LFWindowsId)
     $office = @($all | Where-Object ApplicationID -EQ $LFOfficeId)
@@ -84,6 +92,7 @@ function LF-Scan {
     if ($domain) { [void]$notes.Add('Domain joined OR domain check failed: auto-repair disabled.') }
     if ($kmsVolume) { [void]$notes.Add('KMS/Volume product found: enterprise licensing may be legitimate; auto-repair disabled.') }
 
+    Write-Host ' [2/3] Đang kiểm tra KMS/Registry...' -ForegroundColor DarkCyan
     foreach ($p in $all) {
         $hostName = [string]$p.KeyManagementServiceMachine
         if ([string]::IsNullOrWhiteSpace($hostName)) { continue }
@@ -104,8 +113,16 @@ function LF-Scan {
     foreach ($root in $roots) {
         if (-not (Test-Path -LiteralPath $root)) { continue }
         $keys = @($root)
-        try { $keys += @(Get-ChildItem -LiteralPath $root -Recurse -ErrorAction SilentlyContinue | Select-Object -First 3000 | ForEach-Object PSPath) }
-        catch { [void]$notes.Add("Cannot enumerate every subkey under $root") }
+        try {
+            if ($root -match 'Office\\ClickToRun$') {
+                $keys += @(Get-ChildItem -LiteralPath $root -ErrorAction Stop | ForEach-Object PSPath)
+                [void]$notes.Add('ClickToRun: chỉ quét gốc và nhánh trực tiếp; chưa quét mọi cấu hình.')
+            } else {
+                $children = @(Get-ChildItem -LiteralPath $root -Recurse -ErrorAction Stop | Select-Object -First 3001)
+                if($children.Count -gt 3000){[void]$notes.Add("Chưa quét hết Registry: $root")}
+                $keys += @($children | Select-Object -First 3000 | ForEach-Object PSPath)
+            }
+        } catch { [void]$notes.Add("Không thể quét hết Registry: $root") }
         foreach ($key in $keys) {
             $h = [string](LF-ReadValue $key 'KeyManagementServiceName')
             if ([string]::IsNullOrWhiteSpace($h)) { continue }
@@ -130,6 +147,7 @@ function LF-Scan {
             if ($time) { [void]$notes.Add("SPP $name last modified $time (informational only; never alter timestamps).") }
         }
     }
+    Write-Host ' [3/3] Đang kiểm tra tác vụ và dịch vụ...' -ForegroundColor DarkCyan
     foreach ($serviceName in @('KMSpico','KMService','AutoKMS','KMSAuto','vlmcsd')) {
         $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
         if ($service) { LF-AddIssue $issues 'SERVICE' 'Shared' 'REVIEW' 'Check suspicious activation service' $service.Name $false }
@@ -141,7 +159,10 @@ function LF-Scan {
             }
         }
     } catch {}
+    $watch.Stop()
+    Write-Host (" Hoàn tất sau {0:n1} giây" -f $watch.Elapsed.TotalSeconds) -ForegroundColor DarkGreen
     return [pscustomobject]@{
+        DurationMs=[math]::Round($watch.Elapsed.TotalMilliseconds,0);
         Version=$LFVersion; Timestamp=(Get-Date).ToString('o'); Computer=$env:COMPUTERNAME;
         WindowsLicensed=($winLicensed.Count -gt 0);
         WindowsChannel=$(if($winLicensed.Count){[string]$winLicensed[0].ProductKeyChannel}else{'Unknown'});
