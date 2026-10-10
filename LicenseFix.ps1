@@ -348,7 +348,7 @@ function LF-DeepDisplay($Scan){
 }
 function LF-DeepReport($Scan,[string]$Stage='scan'){
     New-Item -ItemType Directory -Force -Path $LFReports | Out-Null
-    $path=Join-Path $LFReports ('deep-'+$Stage+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,6)+'.json')
+    $path=Join-Path $LFReports ('deep-{0}-{1}-{2}.json' -f $Stage,(Get-Date -Format 'yyyyMMdd-HHmmss'),([guid]::NewGuid().ToString('N').Substring(0,6)))
     [pscustomobject]@{Version=$Scan.Version;At=$Scan.At;Device=$Scan.Device;Stage=$Stage;Checks=$Scan.Items;Findings=$Scan.Base.Issues;WindowsLicensed=$Scan.Base.WindowsLicensed;Channel=$Scan.Base.WindowsChannel} | ConvertTo-Json -Depth 9 | Out-File -LiteralPath $path -Encoding UTF8
     Write-Host ('Đã ghi báo cáo: '+$path) -ForegroundColor Green
 }
