@@ -6,7 +6,7 @@
 $ErrorActionPreference = 'Stop'
 $lfVersion = '2.0.1-beta'
 $lfSource = 'https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/LicenseFix.ps1'
-$lfExpectedSHA256 = 'F5C2174C4231F2581B57FA6C70D87437487E5B602BD333F65A1F12C9BDB32D9E'
+$lfExpectedSHA256 = '828E6FF99616F9C558C8A754439ACD64667B9FB7E0B1B48FFE6AED27E73C2B5E'
 
 try {
     if ($PSVersionTable.PSVersion.Major -lt 5) {
