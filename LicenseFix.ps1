@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-LicenseFix v2.0.0-beta - Windows/Office license diagnostics and scoped remediation.
+LicenseFix v2.0.1-beta - Windows/Office license diagnostics and scoped remediation.
 Preview build: test on a lab PC before performing repairs.
 Independent project. Not affiliated with Microsoft or license.info.vn.
 Repairs only specifically reviewed Registry values after successful backups.
@@ -10,7 +10,7 @@ Never edits SPP data.dat/tokens.dat, license keys, history, or timestamps.
 param([ValidateSet('Menu','Scan','Plan','Repair','Export','Deep')][string]$Mode='Menu')
 
 $ErrorActionPreference = 'Stop'
-$LFVersion = '2.0.0-beta'
+$LFVersion = '2.0.1-beta'
 $LFWindowsId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 $LFOfficeId = '0ff1ce15-a989-479d-af46-f275c6370663'
 $LFBackups = Join-Path $env:ProgramData 'LicenseFix\Backups'
@@ -21,7 +21,7 @@ $LFLastScan = $null
 
 function LF-Title([string]$Text) {
     Write-Host ''
-    Write-Host ('=' * 68) -ForegroundColor Cyan
+    Write-Host ('=' * 56) -ForegroundColor Cyan
     Write-Host (' LicenseFix ' + $LFVersion + ' | ' + $Text) -ForegroundColor Cyan
     Write-Host ('=' * 68) -ForegroundColor Cyan
 }
@@ -53,17 +53,29 @@ function LF-AddIssue($Issues,[string]$Id,[string]$Scope,[string]$Level,
     })
 }
 function LF-Scan {
+    $watch=[Diagnostics.Stopwatch]::StartNew()
+    Write-Host ' [1/3] Đang xác minh giấy phép...' -ForegroundColor DarkCyan
     $issues = New-Object 'System.Collections.Generic.List[object]'
     $notes = New-Object 'System.Collections.Generic.List[string]'
     $domain = $true  # Fail closed if domain membership query fails.
     try { $domain = [bool](Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).PartOfDomain }
-    catch { [void]$notes.Add('Could not query domain membership: all repairs disabled.') }
+    catch { [void]$notes.Add('Không đọc được trạng thái domain; đã khóa chức năng sửa.') }
     $all = @()
     try {
-        $all = @(Get-CimInstance SoftwareLicensingProduct -ErrorAction Stop | Where-Object {
-            $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId)
-        })
-    } catch { [void]$notes.Add('Failed to read SPP license products; repairs disabled.') }
+        $filter = "ApplicationID='$LFWindowsId' OR ApplicationID='$LFOfficeId'"
+        try {
+            $all = @(Get-CimInstance -ClassName SoftwareLicensingProduct -Filter $filter -ErrorAction Stop |
+              Where-Object { $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId) })
+            if($all.Count -eq 0) {
+                $all = @(Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop |
+                  Where-Object { $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId) })
+            }
+        } catch {
+            [void]$notes.Add('WMI không hỗ trợ bộ lọc; dùng truy vấn đầy đủ.')
+            $all = @(Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop |
+              Where-Object { $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId) })
+        }
+    } catch { [void]$notes.Add('Không đọc được dữ liệu cấp phép SPP; đã khóa chức năng sửa.') }
     $win = @($all | Where-Object ApplicationID -EQ $LFWindowsId)
     $office = @($all | Where-Object ApplicationID -EQ $LFOfficeId)
     $winLicensed = @($win | Where-Object LicenseStatus -EQ 1)
@@ -78,18 +90,19 @@ function LF-Scan {
         if ([string]$p.ProductKeyChannel -match 'KMSCLIENT|GVLK' -or [string]$p.Description -match 'VOLUME_KMSCLIENT') { $kmsVolume = $true }
     }
     $safe = (-not $domain -and $winLicensed.Count -gt 0 -and $officeValid -and -not $kmsVolume)
-    if ($winLicensed.Count -eq 0) { LF-AddIssue $issues 'WIN-STATUS' 'Windows' 'REVIEW' 'No licensed Windows product was confirmed' 'Check Settings > Activation and slmgr /dlv' $false }
-    if (-not $officeValid) { LF-AddIssue $issues 'OFF-STATUS' 'Office' 'REVIEW' 'Office product is present but not confirmed licensed' 'Verify through Office account and official activation' $false }
-    if ($officeSeen -eq 0) { [void]$notes.Add('Office M365 vNext licensing may not be visible in SoftwareLicensingProduct.') }
-    if ($domain) { [void]$notes.Add('Domain joined OR domain check failed: auto-repair disabled.') }
-    if ($kmsVolume) { [void]$notes.Add('KMS/Volume product found: enterprise licensing may be legitimate; auto-repair disabled.') }
+    if ($winLicensed.Count -eq 0) { LF-AddIssue $issues 'WIN-STATUS' 'Windows' 'REVIEW' 'Chưa xác minh được Windows đã kích hoạt' 'Kiểm tra Cài đặt > Kích hoạt và slmgr /dlv' $false }
+    if (-not $officeValid) { LF-AddIssue $issues 'OFF-STATUS' 'Office' 'REVIEW' 'Office hiện diện nhưng chưa xác minh được giấy phép' 'Kiểm tra tài khoản Office và cơ chế kích hoạt chính thức' $false }
+    if ($officeSeen -eq 0) { [void]$notes.Add('Microsoft 365 vNext có thể không xuất hiện trong SoftwareLicensingProduct.') }
+    if ($domain) { [void]$notes.Add('Máy thuộc domain hoặc chưa xác minh được domain: không tự sửa.') }
+    if ($kmsVolume) { [void]$notes.Add('Có giấy phép KMS/Volume có thể hợp lệ của tổ chức: không tự sửa.') }
 
+    Write-Host ' [2/3] Đang kiểm tra KMS/Registry...' -ForegroundColor DarkCyan
     foreach ($p in $all) {
         $hostName = [string]$p.KeyManagementServiceMachine
         if ([string]::IsNullOrWhiteSpace($hostName)) { continue }
         if ((LF-KmsKind $hostName) -eq 'CLEARED') { continue }
         $scope = if ($p.ApplicationID -eq $LFOfficeId) { 'Office' } else { 'Windows' }
-        LF-AddIssue $issues 'WMI-KMS' $scope 'REVIEW' 'KMS machine present in WMI license record' ("$($p.Name): $hostName") $false
+        LF-AddIssue $issues 'WMI-KMS' $scope 'REVIEW' 'Có máy chủ KMS trong dữ liệu WMI' ("$($p.Name): $hostName") $false
     }
 
     $roots = @(
@@ -104,8 +117,16 @@ function LF-Scan {
     foreach ($root in $roots) {
         if (-not (Test-Path -LiteralPath $root)) { continue }
         $keys = @($root)
-        try { $keys += @(Get-ChildItem -LiteralPath $root -Recurse -ErrorAction SilentlyContinue | Select-Object -First 3000 | ForEach-Object PSPath) }
-        catch { [void]$notes.Add("Cannot enumerate every subkey under $root") }
+        try {
+            if ($root -match 'Office\\ClickToRun$') {
+                $keys += @(Get-ChildItem -LiteralPath $root -ErrorAction Stop | ForEach-Object PSPath)
+                [void]$notes.Add('ClickToRun: chỉ quét gốc và nhánh trực tiếp; chưa quét mọi cấu hình.')
+            } else {
+                $children = @(Get-ChildItem -LiteralPath $root -Recurse -ErrorAction Stop | Select-Object -First 3001)
+                if($children.Count -gt 3000){[void]$notes.Add("Chưa quét hết Registry: $root")}
+                $keys += @($children | Select-Object -First 3000 | ForEach-Object PSPath)
+            }
+        } catch { [void]$notes.Add("Không thể quét hết Registry: $root") }
         foreach ($key in $keys) {
             $h = [string](LF-ReadValue $key 'KeyManagementServiceName')
             if ([string]::IsNullOrWhiteSpace($h)) { continue }
@@ -113,13 +134,13 @@ function LF-Scan {
             if ($kind -eq 'CLEARED') { continue }
             $number++
             $scope = if ($key -match '0ff1ce15-' -or $root -match 'Office') { 'Office' } else { 'Shared' }
-            LF-AddIssue $issues ("KMS-{0:d3}" -f $number) $scope $kind 'Stored KMS server configuration' ("$key -> $h") ($safe -and $kind -eq 'SUSPICIOUS') $key 'KeyManagementServiceName' $h
+            LF-AddIssue $issues ("KMS-{0:d3}" -f $number) $scope $kind 'Còn cấu hình máy chủ KMS' ("$key -> $h") ($safe -and $kind -eq 'SUSPICIOUS') $key 'KeyManagementServiceName' $h
         }
     }
     $policy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Software Protection Platform'
     $noGen = LF-ReadValue $policy 'NoGenTicket'
     if ([string]$noGen -eq '1') {
-        LF-AddIssue $issues 'POL-001' 'Shared' 'REVIEW' 'NoGenTicket=1 policy requires review' $policy $safe $policy 'NoGenTicket' '1'
+        LF-AddIssue $issues 'POL-001' 'Shared' 'REVIEW' 'Chính sách NoGenTicket=1 cần xác minh' $policy $safe $policy 'NoGenTicket' '1'
     }
 
     $store = Join-Path $env:SystemRoot 'System32\spp\store\2.0'
@@ -127,21 +148,25 @@ function LF-Scan {
         $p = Join-Path $store $name
         if (Test-Path -LiteralPath $p) {
             $time = (Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue).LastWriteTime
-            if ($time) { [void]$notes.Add("SPP $name last modified $time (informational only; never alter timestamps).") }
+            if ($time) { [void]$notes.Add("Thời gian sửa đổi SPP ${name}: $time (chỉ tham khảo, không chỉnh thời gian).") }
         }
     }
+    Write-Host ' [3/3] Đang kiểm tra tác vụ và dịch vụ...' -ForegroundColor DarkCyan
     foreach ($serviceName in @('KMSpico','KMService','AutoKMS','KMSAuto','vlmcsd')) {
         $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-        if ($service) { LF-AddIssue $issues 'SERVICE' 'Shared' 'REVIEW' 'Check suspicious activation service' $service.Name $false }
+        if ($service) { LF-AddIssue $issues 'SERVICE' 'Shared' 'REVIEW' 'Cần xác minh dịch vụ kích hoạt khả nghi' $service.Name $false }
     }
     try {
         foreach ($task in @(Get-ScheduledTask -ErrorAction SilentlyContinue)) {
             if ($task.TaskName -match 'AutoKMS|AutoPico|KMSAuto|KMSpico|Activation-Renewal') {
-                LF-AddIssue $issues 'TASK' 'Shared' 'REVIEW' 'Review scheduled activation task' ("$($task.TaskPath)$($task.TaskName)") $false
+                LF-AddIssue $issues 'TASK' 'Shared' 'REVIEW' 'Cần xác minh tác vụ kích hoạt' ("$($task.TaskPath)$($task.TaskName)") $false
             }
         }
     } catch {}
+    $watch.Stop()
+    Write-Host (" Hoàn tất sau {0:n1} giây" -f $watch.Elapsed.TotalSeconds) -ForegroundColor DarkGreen
     return [pscustomobject]@{
+        DurationMs=[math]::Round($watch.Elapsed.TotalMilliseconds,0);
         Version=$LFVersion; Timestamp=(Get-Date).ToString('o'); Computer=$env:COMPUTERNAME;
         WindowsLicensed=($winLicensed.Count -gt 0);
         WindowsChannel=$(if($winLicensed.Count){[string]$winLicensed[0].ProductKeyChannel}else{'Unknown'});
@@ -151,26 +176,24 @@ function LF-Scan {
     }
 }
 function LF-Show($Scan) {
-    LF-Title 'Windows / Office diagnostic'
-    Write-Host "Computer: $($Scan.Computer); Windows Licensed: $($Scan.WindowsLicensed); Channel: $($Scan.WindowsChannel)"
-    Write-Host "Office products in WMI: $($Scan.OfficeDetected); KMS Volume: $($Scan.KmsVolume)"
-    Write-Host "Domain/unknown: $($Scan.DomainJoinedOrUnknown); Safe repair eligibility: $($Scan.RepairEligible)"
-    foreach ($issue in $Scan.Issues) {
-        $color=if($issue.CanFix){'Yellow'}else{'Gray'}
-        Write-Host "[$($issue.Id)] $($issue.Scope) $($issue.Level): $($issue.Reason)" -ForegroundColor $color
-        Write-Host "    $($issue.Evidence)"
-        Write-Host "    Eligible for confirmed cleanup: $($issue.CanFix)"
+    LF-Title 'TỔNG QUAN WINDOWS / OFFICE'
+    Write-Host (" Máy: {0}  |  Quét: {1:n1}s" -f $Scan.Computer,($Scan.DurationMs/1000))
+    Write-Host (" Windows: {0}  |  Kênh: {1}" -f $(if($Scan.WindowsLicensed){'Đã kích hoạt'}else{'Chưa xác minh'}),$Scan.WindowsChannel)
+    Write-Host (" Office: {0} sản phẩm WMI  |  KMS/Volume: {1}" -f $Scan.OfficeDetected,$Scan.KmsVolume)
+    if(@($Scan.Issues).Count) {
+        Write-Host (" {0} cảnh báo cần kiểm tra:" -f @($Scan.Issues).Count) -ForegroundColor Yellow
+        foreach($it in $Scan.Issues){Write-Host ("  [{0}] {1}" -f $it.Id,$it.Reason) -ForegroundColor Yellow}
+    } else {
+        Write-Host ' Chưa phát hiện cảnh báo trong các phép kiểm đã hỗ trợ.' -ForegroundColor Green
     }
-    if ($Scan.Issues.Count -eq 0) { Write-Host 'No findings in the implemented v1 checks.' -ForegroundColor Green }
-    foreach ($note in $Scan.Notes) { Write-Host "[INFO] $note" -ForegroundColor Gray }
-    Write-Host "TOTAL: $($Scan.Issues.Count) findings" -ForegroundColor Cyan
-    Write-Warning 'A green scanner result is not proof of valid license ownership. Check purchase documentation.'
+    if(@($Scan.Notes).Count) {Write-Host (" {0} ghi chú khác; xuất JSON để xem đủ." -f @($Scan.Notes).Count) -ForegroundColor DarkGray}
+    Write-Host ' Kết quả không chứng minh quyền sở hữu bản quyền.' -ForegroundColor DarkGray
 }
 function LF-Export($Scan) {
     New-Item -Path $LFReports -ItemType Directory -Force | Out-Null
     $p = Join-Path $LFReports ('scan-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')
     $Scan | ConvertTo-Json -Depth 7 | Out-File -LiteralPath $p -Encoding UTF8
-    Write-Host "Saved report: $p"
+    Write-Host "Đã lưu báo cáo: $p"
 }
 function LF-NativePath([string]$Path) {
     if ($Path -match '^HKLM:\\') { return ($Path -replace '^HKLM:\\','HKLM\') }
@@ -180,18 +203,19 @@ function LF-NativePath([string]$Path) {
     if ($Path -match '^Registry::HKEY_LOCAL_MACHINE\\') {
         return ($Path -replace '^Registry::HKEY_LOCAL_MACHINE\\','HKLM\')
     }
-    throw "Unsupported Registry path: $Path"
+    throw "Đường dẫn Registry không được hỗ trợ: $Path"
 }
-function LF-Repair($Scan) {
-    LF-Title 'Backup and confirmed residual Registry cleanup'
-    if (-not (LF-Admin)) { Write-Warning 'Open PowerShell as Administrator for repairs.'; return }
-    if (-not $Scan.RepairEligible) { Write-Warning 'Safety lock: Windows/Office licensing or domain/KMS policy requires review. Nothing changed.'; return }
+function LF-Repair($Scan,[switch]$SkipRescan) {
+    $script:LFRepairChanged=$false
+    LF-Title 'SAO LƯU VÀ SỬA REGISTRY'
+    if (-not (LF-Admin)) { Write-Warning 'Hãy mở PowerShell với quyền Administrator để sửa lỗi.'; return }
+    if (-not $Scan.RepairEligible) { Write-Warning 'Đã khóa sửa: cần đối chiếu giấy phép hoặc chính sách domain/KMS. Chưa thay đổi dữ liệu.'; return }
     $fixes = @($Scan.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
-    if ($fixes.Count -eq 0) { Write-Host 'No values eligible for automatic repair.'; return }
+    if ($fixes.Count -eq 0) { Write-Host 'Không có giá trị Registry đủ điều kiện xử lý.'; return }
     foreach ($f in $fixes) { Write-Host ("PLAN {0}: {1} / {2} = {3}" -f $f.Id,$f.RegistryPath,$f.ValueName,$f.ExpectedValue) }
-    Write-Warning 'Remove only values shown above. Never delete entire keys or SPP license store files.'
-    if ((Read-Host 'Type SUA to BACKUP then remove ONLY the listed values') -cne 'SUA') {
-        Write-Host 'Cancelled. No changes made.'; return
+    Write-Warning 'Chỉ xóa giá trị đã liệt kê. Không xóa cả khóa Registry hoặc kho SPP.'
+    if ((Read-Host 'Gõ SUA để sao lưu và chỉ xóa các giá trị đã xác minh') -cne 'SUA') {
+        Write-Host 'Đã hủy, không thay đổi dữ liệu.'; return
     }
     $backup = Join-Path $LFBackups (Get-Date -Format 'yyyyMMdd-HHmmss')
     New-Item -Path $backup -ItemType Directory -Force | Out-Null
@@ -204,22 +228,23 @@ function LF-Repair($Scan) {
         $regfile = Join-Path $backup ("registry-{0:d3}.reg" -f (++$n))
         & reg.exe export $native $regfile /y | Out-Null
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $regfile)) {
-            throw "BACKUP FAILED at $native. No Registry values were removed."
+            throw "Sao lưu thất bại tại $native. Chưa xóa dữ liệu Registry."
         }
     }
-    Write-Host "Registry backups: $backup" -ForegroundColor Green
+    Write-Host "Bản sao Registry: $backup" -ForegroundColor Green
     foreach ($f in $fixes) {
         $current = LF-ReadValue $f.RegistryPath $f.ValueName
         if ([string]$current -cne [string]$f.ExpectedValue) {
-            Write-Warning "Skipping $($f.Id): value changed after scan."; continue
+            Write-Warning "Bỏ qua $($f.Id): giá trị đã thay đổi sau khi quét."; continue
         }
         try {
             Remove-ItemProperty -LiteralPath $f.RegistryPath -Name $f.ValueName -ErrorAction Stop
-            Write-Host "Removed $($f.Id): $($f.ValueName)" -ForegroundColor Green
-        } catch { Write-Warning "Could not remove $($f.Id): $($_.Exception.Message)" }
+            $script:LFRepairChanged=$true
+            Write-Host ("Đã xử lý: {0}" -f $f.Id) -ForegroundColor Green
+        } catch { Write-Warning "Không thể xử lý $($f.Id): $($_.Exception.Message)" }
     }
-    Write-Warning 'Do not blindly import backup .reg files; review present licensing state first.'
-    LF-Show (LF-Scan)
+    Write-Warning 'Không tự nhập lại bản sao .reg trước khi xác minh bản quyền.'
+    if (-not $SkipRescan){LF-Show (LF-Scan)}
 }
 
 # LICENSEFIX DEEP REPAIR 2.0 - STAGED, EVIDENCE-BASED
@@ -227,7 +252,9 @@ function LF-DeepItem([int]$Id,[string]$Name,[string]$Status,[string]$Evidence,[s
     [pscustomobject]@{Id=$Id;Name=$Name;Status=$Status;Evidence=$Evidence;Action=$Action}
 }
 function LF-DeepInspect {
+    $deepWatch=[Diagnostics.Stopwatch]::StartNew()
     $base=LF-Scan
+    Write-Host ' Đang hoàn thiện 19 nhóm kiểm tra...' -ForegroundColor DarkCyan
     $titles=@(
       'Thông tin Windows/OEM BIOS','Windows SPP/WMI','Office SPP/OSPP',
       'KMS Windows','Cổng 1688 / giả lập KMS','Dấu vết công cụ kích hoạt',
@@ -255,7 +282,8 @@ function LF-DeepInspect {
       $rows[2].Action='Kiểm tra Office Account và giấy phép cho từng SKU.'
     }
     $kmsWin=@($base.Issues|Where-Object {$_.Id -like 'KMS-*' -and $_.Scope -ne 'Office'})
-    $rows[3].Status=if($kmsWin.Count){'WARN'}elseif($base.KmsVolume){'REVIEW'}else{'PASS'}
+    $kmsIncomplete=@($base.Notes | Where-Object {$_ -match 'Registry'})
+    $rows[3].Status=if($kmsWin.Count){'WARN'}elseif($base.KmsVolume -or $kmsIncomplete.Count){'REVIEW'}else{'PASS'}
     $rows[3].Evidence=if($kmsWin.Count){($kmsWin.Evidence -join '; ')}else{'Không thấy cấu hình KMS bất thường trong phạm vi v1.'}
     $rows[3].Action='Không xóa KMS doanh nghiệp; chỉ dọn cấu hình tồn dư sau khi sao lưu.'
     try{
@@ -329,22 +357,37 @@ function LF-DeepInspect {
     $rows[16].Action='Xác minh Office OSPP/ClickToRun và giấy phép Volume hợp pháp.'
     $rows[17].Action='Đối chiếu ClickToRun ProductReleaseIds, SKU và chứng từ.'
     $rows[18].Action='Dùng kiểm tra cấp phép Office, không tự đặt lại kho SPP.'
-    [pscustomobject]@{Version=$LFVersion;At=(Get-Date).ToString('o');Device=$env:COMPUTERNAME;Base=$base;Items=@($rows)}
+    $deepWatch.Stop()
+    [pscustomobject]@{Version=$LFVersion;At=(Get-Date).ToString('o');Device=$env:COMPUTERNAME;Base=$base;Items=@($rows);DurationMs=[math]::Round($deepWatch.Elapsed.TotalMilliseconds,0)}
 }
 function LF-DeepDisplay($Scan){
-    LF-Title 'CHẨN ĐOÁN CHUYÊN SÂU - 19 NHÓM'
-    foreach($item in $Scan.Items){
-       $color=switch($item.Status){'PASS'{'Green'}'WARN'{'Red'}'REVIEW'{'Yellow'}default{'DarkGray'}}
-       Write-Host ("[{0:d2}] {1} | {2}" -f $item.Id,$item.Status,$item.Name) -ForegroundColor $color
-       Write-Host ("  {0}" -f $item.Evidence) -ForegroundColor Gray
-       if($item.Status -ne 'PASS'){Write-Host ("  Gợi ý: {0}" -f $item.Action) -ForegroundColor DarkGray}
-    }
+    LF-Title 'TỔNG QUAN QUÉT CHUYÊN SÂU'
     $p=@($Scan.Items|Where-Object Status -EQ 'PASS').Count
     $w=@($Scan.Items|Where-Object Status -EQ 'WARN').Count
     $r=@($Scan.Items|Where-Object Status -EQ 'REVIEW').Count
     $n=@($Scan.Items|Where-Object Status -EQ 'NOT_CHECKED').Count
-    Write-Host ("Tổng: {0} đạt | {1} cảnh báo | {2} cần xác minh | {3} chưa kiểm tra" -f $p,$w,$r,$n) -ForegroundColor Cyan
-    if($r -gt 0 -or $n -gt 0){Write-Warning 'Không thể kết luận 19/19 xanh khi có mục chưa xác minh hoặc chưa kiểm tra.'}
+    Write-Host (" Thiết bị: {0}  |  Quét nền: {1:n1}s" -f $Scan.Device,($Scan.DurationMs/1000))
+    Write-Host (" {0} đạt  |  {1} cảnh báo  |  {2} cần xem  |  {3} chưa quét" -f $p,$w,$r,$n) -ForegroundColor Cyan
+    Write-Host ('-'*56) -ForegroundColor DarkGray
+    foreach($it in $Scan.Items) {
+      $status=switch($it.Status){'PASS'{'ĐẠT'}'WARN'{'CẢNH BÁO'}'REVIEW'{'CẦN XEM'}default{'CHƯA QUÉT'}}
+      $color=switch($it.Status){'PASS'{'Green'}'WARN'{'Red'}'REVIEW'{'Yellow'}default{'DarkGray'}}
+      Write-Host (" {0,2}. {1,-10} {2}" -f $it.Id,$status,$it.Name) -ForegroundColor $color
+    }
+    Write-Host ('-'*56) -ForegroundColor DarkGray
+    Write-Host ' Chọn mục 2 để xem bằng chứng của từng hạng mục.' -ForegroundColor Cyan
+    if($n -or $r){Write-Host ' Chưa thể kết luận đạt đầy đủ 19 nhóm.' -ForegroundColor Yellow}
+}
+function LF-DeepDetail($Scan,[int]$Id) {
+    if($Id -lt 1 -or $Id -gt 19){Write-Warning 'Nhập số từ 1 đến 19.';return}
+    $it=$Scan.Items[$Id-1]
+    LF-Title ("CHI TIẾT #{0:d2}" -f $Id)
+    $label=switch($it.Status){'PASS'{'Đạt'}'WARN'{'Cảnh báo'}'REVIEW'{'Cần xem'}default{'Chưa quét'}}
+    Write-Host (" {0}  |  {1}" -f $it.Name,$label) -ForegroundColor Cyan
+    Write-Host ' Bằng chứng:' -ForegroundColor Gray
+    Write-Host ("  {0}" -f $it.Evidence)
+    Write-Host ' Đề xuất:' -ForegroundColor Gray
+    Write-Host ("  {0}" -f $it.Action)
 }
 function LF-DeepReport($Scan,[string]$Stage='scan'){
     New-Item -ItemType Directory -Force -Path $LFReports | Out-Null
@@ -367,61 +410,81 @@ function LF-DeepSystem([string]$Tool){
 function LF-DeepMenu {
   $scan=$null
   do {
-    LF-Title 'DEEP REPAIR 2.0 BETA'
-    Write-Host ' 1. Quét 19 nhóm và hiển thị bằng chứng'
-    Write-Host ' 2. Xem phương án sửa có chọn lọc (Dry-run)'
-    Write-Host ' 3. Sao lưu + sửa Registry đủ điều kiện + quét lại'
-    Write-Host ' 4. SFC /scannow (xác nhận riêng)'
-    Write-Host ' 5. DISM /RestoreHealth (xác nhận riêng)'
+    LF-Title 'SỬA LỖI CHUYÊN SÂU'
+    Write-Host ' 1. Quét và xem tổng quan'
+    Write-Host ' 2. Xem chi tiết theo số mục'
+    Write-Host ' 3. Xem trước kế hoạch sửa'
+    Write-Host ' 4. Sao lưu và sửa Registry có xác nhận'
+    Write-Host ' 5. Công cụ SFC / DISM'
     Write-Host ' 6. Xuất báo cáo JSON'
-    Write-Host ' 0. Trở về'
+    Write-Host ' 0. Quay về'
     $choice=Read-Host 'Chọn'
-    switch($choice){
-      '1' { $scan=LF-DeepInspect; LF-DeepDisplay $scan }
+    switch($choice) {
+      '1' {$scan=LF-DeepInspect;LF-DeepDisplay $scan}
       '2' {
-        $scan=LF-DeepInspect; LF-DeepDisplay $scan
-        $fix=@($scan.Base.Issues|Where-Object CanFix)
-        if($fix.Count){$fix|Select-Object Id,Scope,Evidence|Format-Table -AutoSize|Out-Host}
-        else{Write-Host 'Không có mục Registry đủ điều kiện sửa an toàn.'}
+        if(-not $scan){Write-Host 'Chưa quét. Hãy chọn 1 trước.' -ForegroundColor Yellow}
+        else {
+          $id=0
+          $inputId=Read-Host 'Nhập số hạng mục (1-19)'
+          if([int]::TryParse($inputId,[ref]$id)){LF-DeepDetail $scan $id}
+          else{Write-Warning 'Mã không hợp lệ.'}
+        }
       }
       '3' {
-        $scan=LF-DeepInspect; LF-DeepReport $scan 'before'
-        LF-Repair $scan.Base
-        $scan=LF-DeepInspect; LF-DeepReport $scan 'after'; LF-DeepDisplay $scan
+        if(-not $scan){$scan=LF-DeepInspect}
+        $fix=@($scan.Base.Issues|Where-Object CanFix)
+        if($fix.Count){$fix|Select-Object Id,Scope,Reason|Format-Table -AutoSize|Out-Host}
+        else{Write-Host 'Không có mục Registry đủ điều kiện sửa.' -ForegroundColor Yellow}
       }
-      '4' {LF-DeepSystem 'SFC'}
-      '5' {LF-DeepSystem 'DISM'}
+      '4' {
+        if(-not $scan){$scan=LF-DeepInspect}
+        LF-DeepReport $scan 'before'
+        LF-Repair $scan.Base -SkipRescan
+        if($script:LFRepairChanged){
+          $scan=LF-DeepInspect
+          LF-DeepReport $scan 'after'
+          LF-DeepDisplay $scan
+        } else {Write-Host 'Không có thay đổi; bỏ qua quét lại.' -ForegroundColor Gray}
+      }
+      '5' {
+        Write-Host ' 1. SFC /scannow   2. DISM /RestoreHealth   0. Hủy'
+        $opt=Read-Host 'Chọn'
+        if($opt -eq '1'){LF-DeepSystem 'SFC'}elseif($opt -eq '2'){LF-DeepSystem 'DISM'}
+      }
       '6' {if(-not $scan){$scan=LF-DeepInspect};LF-DeepReport $scan 'manual'}
       '0' {}
       default {Write-Warning 'Lựa chọn không hợp lệ.'}
     }
-    if($choice -ne '0'){[void](Read-Host 'Enter để tiếp tục')}
+    if($choice -ne '0'){[void](Read-Host 'Nhấn Enter để tiếp tục')}
   }while($choice -ne '0')
 }
-
 function LF-Menu {
-    do {
-        LF-Title 'Main menu'
-        Write-Host ' 1. Diagnose (read-only)'
-        Write-Host ' 2. Scan and show safe repair plan'
-        Write-Host ' 3. Backup + confirm Registry cleanup + rescan'
-        Write-Host ' 4. Export JSON diagnostics'
-        Write-Host ' 5. Run sfc /verifyonly (read-only)'
-        Write-Host ' 6. Deep Repair: 19 nhóm, sao lưu và sửa có kiểm soát'
-        Write-Host ' 0. Exit'
-        $choice = Read-Host 'Choose'
-        switch($choice) {
-            '1' { $script:LFLastScan=LF-Scan; LF-Show $script:LFLastScan }
-            '2' { $script:LFLastScan=LF-Scan; LF-Show $script:LFLastScan }
-            '3' { $script:LFLastScan=LF-Scan; LF-Show $script:LFLastScan; LF-Repair $script:LFLastScan }
-            '4' { if(-not $script:LFLastScan){$script:LFLastScan=LF-Scan}; LF-Export $script:LFLastScan }
-            '5' { & sfc.exe /verifyonly }
-            '6' { LF-DeepMenu }
-            '0' { break }
-            default { Write-Warning 'Invalid option' }
-        }
-        if ($choice -ne '0') { [void](Read-Host 'Press Enter to continue') }
-    } while ($choice -ne '0')
+  do {
+    LF-Title 'MENU CHÍNH'
+    Write-Host ' 1. Kiểm tra bản quyền Windows / Office'
+    Write-Host ' 2. Xem đề xuất sửa lỗi'
+    Write-Host ' 3. Sao lưu và sửa nhanh Registry'
+    Write-Host ' 4. Xuất báo cáo JSON'
+    Write-Host ' 5. Kiểm tra SFC (chỉ đọc)'
+    Write-Host ' 6. Sửa lỗi chuyên sâu'
+    Write-Host ' 0. Thoát'
+    $choice=Read-Host 'Chọn'
+    switch($choice) {
+      '1' {$script:LFLastScan=LF-Scan;LF-Show $script:LFLastScan}
+      '2' {if(-not $script:LFLastScan){$script:LFLastScan=LF-Scan};LF-Show $script:LFLastScan}
+      '3' {
+        if(-not $script:LFLastScan){$script:LFLastScan=LF-Scan}
+        LF-Repair $script:LFLastScan -SkipRescan
+        if($script:LFRepairChanged){$script:LFLastScan=LF-Scan;LF-Show $script:LFLastScan}
+      }
+      '4' {if(-not $script:LFLastScan){$script:LFLastScan=LF-Scan};LF-Export $script:LFLastScan}
+      '5' {& sfc.exe /verifyonly}
+      '6' {LF-DeepMenu}
+      '0' {}
+      default {Write-Warning 'Lựa chọn không hợp lệ.'}
+    }
+    if($choice -ne '0'){[void](Read-Host 'Nhấn Enter để tiếp tục')}
+  }while($choice -ne '0')
 }
 if (-not $env:SystemRoot) { throw 'Windows only.' }
 switch ($Mode) {
