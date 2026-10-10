@@ -1,4 +1,4 @@
-# LicenseFix v2.1.3-beta
+# LicenseFix v2.1.4-beta
 
 Công cụ kiểm tra bản quyền Windows/Office và xử lý **từng lỗi có bằng chứng** trên Windows PowerShell 5.1. Bản này vẫn cần kiểm thử trên máy ảo trước khi dùng thao tác sửa trên máy thật.
 
@@ -11,10 +11,10 @@ Launcher `launch.ps1` tải bản lõi theo commit phát hành đã ghim và ki�
 ## Menu
 
 - Menu chính: kiểm tra, xem **kế hoạch và lý do khóa sửa** (mục 2), mở **danh sách hành động sửa được hỗ trợ** (mục 3), xuất JSON, `sfc /verifyonly`, sửa lỗi chuyên sâu, và xem/nhập key chính hãng (mục 7). Màn hình kết quả chờ Enter rồi mới quay lại.
-- Menu chuyên sâu: quét 19 nhóm rồi chọn ngay `2` (bằng chứng), `3` (kế hoạch), `4` (hành động sửa) hoặc `0` (quay về) tại màn hình kết quả. Các số này là lựa chọn thật, không còn bị lời nhắc Enter nuốt mất.
+- Menu chuyên sâu: quét 19 nhóm rồi chọn ngay `2` (bằng chứng), `3` (kế hoạch), `4` (menu sửa bằng số) hoặc `0` (quay về) tại màn hình kết quả. Từ menu sửa, chọn `6` rồi nhập số mục quét để xem hành động liên quan hoặc lý do chưa thể sửa tự động.
 - Kế hoạch xử lý liệt kê các giá trị Registry đủ điều kiện, những dòng `hosts` đủ điều kiện, cùng **lý do bị khóa**. Các mục cần xem/chưa quét được trình bày riêng; không coi chúng là lỗi đã xác nhận.
-- Mục `4` dẫn tới `R` (sao lưu rồi sửa đúng giá trị Registry đủ điều kiện), `H` (sao lưu rồi gỡ dòng hosts đủ điều kiện), `S` (chạy `sfc.exe /scannow`), `D` (chạy `dism.exe /Online /Cleanup-Image /RestoreHealth`) hoặc `K` (menu key). Với `R`/`H`, chương trình liệt kê thay đổi và hỏi `Y`; sau đó **tự sao lưu, xác minh bản sao và mới sửa**. Không cần tự sao lưu trước. Nếu không có mục đủ điều kiện hoặc sao lưu thất bại, chương trình giải thích và không sửa. Các lệnh hệ thống chạy từ PowerShell sau xác nhận; kết quả phụ thuộc trạng thái máy. Phần lớn mục “CẦN XEM” chỉ là việc cần kiểm tra, không có lệnh sửa an toàn để chạy hàng loạt.
-- Hành động chuyên sâu: `R` sửa giá trị Registry đã được phép sau khi xuất `.reg`; `H` sao lưu và gỡ riêng những dòng `hosts` chỉ ánh xạ máy chủ kích hoạt Microsoft; `S` chạy `sfc /scannow`; `D` chạy `DISM /RestoreHealth`; `K` mở menu key. Mỗi hành động thay đổi hệ thống yêu cầu xác nhận. Dòng `hosts` có thêm tên miền khác được giữ lại để kiểm tra thủ công.
+- Menu sửa dùng số: `1` sửa giá trị Registry đủ điều kiện, `2` gỡ dòng `hosts` đủ điều kiện, `3` chạy `sfc.exe /scannow`, `4` chạy `dism.exe /Online /Cleanup-Image /RestoreHealth`, `5` mở menu key và `6` chọn mục quét 1–19 để xem cách xử lý. Mục `1`/`2` liệt kê thay đổi và hỏi `Y`; sau đó **tự sao lưu, xác minh bản sao và mới sửa**. Không cần tự sao lưu trước. Nếu không có mục đủ điều kiện hoặc sao lưu thất bại, chương trình giải thích và không sửa.
+- SFC/DISM có xác nhận `Y` riêng và có thể sửa tệp hệ thống; bản sao Registry/`hosts` không hoàn tác được thay đổi này. Dòng `hosts` có thêm tên miền khác được giữ lại để kiểm tra thủ công. Mỗi mục quét có hướng xử lý tương ứng; nhiều mục chỉ có thể kiểm tra thủ công vì bằng chứng hiện tại chưa đủ để tự xóa hoặc sửa.
 
 ## Key Windows và Office
 
@@ -29,6 +29,7 @@ Launcher `launch.ps1` tải bản lõi theo commit phát hành đã ghim và ki�
 ## Giới hạn an toàn
 
 - Dấu thời gian `data.dat`/`tokens.dat` chỉ là thông tin tham khảo, không chứng minh có crack và không được sửa để làm đẹp kết quả.
+- Mục rearm và thời gian kho SPP được gắn nhãn **THÔNG TIN** thay vì “CẦN XEM”; không có lỗi phải sửa chỉ từ những số liệu này. Mục chưa quét hết được gắn **CHƯA QUÉT**, không tự chuyển sang màu xanh.
 - Công cụ không tự gỡ product key, xóa kho SPP, xóa lịch sử PowerShell hay kết luận quyền sở hữu bản quyền từ trạng thái kích hoạt.
 - Máy domain, KMS/Volume hợp lệ hoặc trạng thái cấp phép chưa xác minh có thể làm thao tác Registry bị khóa. Kế hoạch sẽ hiện lý do cụ thể.
 - Sao lưu Registry/`hosts` giúp hoàn tác các thay đổi tương ứng; nó không thể tự phục hồi một product key đầy đủ nếu key bị thay hoặc gỡ. `SFC`/`DISM` không được bảo vệ bằng các bản sao này và có xác nhận riêng.
@@ -38,5 +39,7 @@ Launcher `launch.ps1` tải bản lõi theo commit phát hành đã ghim và ki�
 ## Nguồn tham khảo
 
 Giao diện bằng chứng, luồng đi từ kết luận tới hành động và cách diễn giải key Registry được tham khảo từ [license.info.vn](https://github.com/tiennnict/license.info.vn) (Apache-2.0). LicenseFix có triển khai riêng tính năng giải mã `DigitalProductId`; kết quả không được dùng làm bằng chứng sở hữu bản quyền. Các quy tắc sửa tự động vẫn do LicenseFix xác định riêng.
+
+License.info.vn mô tả phạm vi dọn tác vụ, dịch vụ và ngoại lệ Defender rộng hơn. LicenseFix hiện chỉ tự sửa Registry/`hosts` khi xác minh đủ điều kiện, cộng các lệnh Windows SFC/DISM và luồng key chính hãng; các nhóm khác được hướng dẫn kiểm tra thủ công thay vì xóa theo tên.
 
 Hướng dẫn kích hoạt tham khảo: [Microsoft 365/Office Retail](https://support.microsoft.com/en-us/microsoft-365-activation-licensing/office-install/where-to-enter-your-office-product-key), [Office Volume](https://learn.microsoft.com/en-us/deployoffice/vlactivation/tools-to-manage-volume-activation-of-office), [trạng thái Microsoft 365 vNext](https://learn.microsoft.com/en-gb/microsoft-365-apps/licensing-activation/vnextdiag).

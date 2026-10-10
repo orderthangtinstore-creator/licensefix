@@ -1,6 +1,6 @@
 ﻿#requires -Version 5.1
 <#
-LicenseFix v2.1.3-beta - Windows/Office license diagnostics and scoped remediation.
+LicenseFix v2.1.4-beta - Windows/Office license diagnostics and scoped remediation.
 Preview build: test on a lab PC before performing repairs.
 Independent project. Not affiliated with Microsoft or license.info.vn.
 Repairs only specifically reviewed settings after successful backups and confirmation.
@@ -11,7 +11,7 @@ Product keys change only after separate, explicit confirmation by the user.
 param([ValidateSet('Menu','Scan','Plan','Repair','Export','Deep')][string]$Mode='Menu')
 
 $ErrorActionPreference = 'Stop'
-$LFVersion = '2.1.3-beta'
+$LFVersion = '2.1.4-beta'
 $LFWindowsId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 $LFOfficeId = '0ff1ce15-a989-479d-af46-f275c6370663'
 $LFBackups = Join-Path $env:ProgramData 'LicenseFix\Backups'
@@ -332,7 +332,7 @@ function LF-DeepInspect {
     foreach($path in @("$env:windir\AutoKMS","$env:windir\AutoPico","$env:ProgramData\KMSpico","$env:windir\System32\SppExtComObjHook.dll")){
       if(Test-Path -LiteralPath $path){$pathHits+= $path}
     }
-    $rows[5].Status='REVIEW'
+    $rows[5].Status=if($pathHits.Count){'REVIEW'}else{'NOT_CHECKED'}
     $rows[5].Evidence=if($pathHits.Count){$pathHits -join '; '}else{'Không thấy 4 vị trí phổ biến; chưa quét tất cả đường dẫn.'}
     $rows[5].Action='Đối chiếu hash, publisher và phần mềm cài đặt trước khi gỡ.'
     try{
@@ -346,20 +346,20 @@ function LF-DeepInspect {
     $rows[8].Action='Kiểm tra giấy phép số bằng cơ chế Microsoft; không tạo GenuineTicket giả.'
     try{
       $wmi=Get-CimInstance SoftwareLicensingService -ErrorAction Stop
-      $rows[9].Status='REVIEW'
+      $rows[9].Status='INFO'
       $rows[9].Evidence="Rearm Windows=$($wmi.RemainingWindowsReArmCount); SKU=$($wmi.RemainingSkuReArmCount)"
       $rows[9].Action='Đây là số liệu tham khảo, không reset.'
     }catch{}
     $taskHits=@($base.Issues|Where-Object {$_.Id -eq 'TASK'})
-    $rows[10].Status='REVIEW'
+    $rows[10].Status=if($taskHits.Count){'REVIEW'}else{'NOT_CHECKED'}
     $rows[10].Evidence=if($taskHits.Count){$taskHits.Evidence -join '; '}else{'Không thấy task trùng mẫu phổ biến; actions chưa kiểm tra đủ.'}
-    $rows[10].Action='Xem nội dung task và chữ ký phần mềm trước khi sửa.'
+    $rows[10].Action='Mở Task Scheduler, xem Actions và tệp đích; chỉ gỡ task sau khi xác minh nguồn gốc.'
     try{
       $mp=Get-MpPreference -ErrorAction Stop
       $ex=@($mp.ExclusionPath|Where-Object {$_ -match '(?i)(KMS|AutoPico|Activation-Renewal)'})
-      $rows[11].Status='REVIEW'
+      $rows[11].Status=if($ex.Count){'REVIEW'}else{'NOT_CHECKED'}
       $rows[11].Evidence=if($ex.Count){$ex -join '; '}else{'Không thấy ngoại lệ khớp tên phổ biến; chưa xét Defender history.'}
-      $rows[11].Action='Tham khảo chính sách IT trước khi xóa ngoại lệ.'
+      $rows[11].Action='Mở Windows Security > Virus & threat protection > Exclusions; đối chiếu với chính sách IT trước khi xóa.'
     }catch{}
     $rows[12].Evidence='Không thu thập lịch sử riêng tư hay xóa dòng lệnh để né kiểm toán.'
     try{
@@ -377,18 +377,18 @@ function LF-DeepInspect {
         if($a){$timestamps+= "$fn=$($a.LastWriteTime)"}
       }
     }
-    $rows[14].Status='REVIEW'
+    $rows[14].Status='INFO'
     $rows[14].Evidence=$timestamps -join '; '
     $rows[14].Action='LastWriteTime không chứng minh crack; tuyệt đối không chỉnh thời gian để né scanner.'
     $dlls=@()
     foreach($p in @("$env:ProgramFiles\Microsoft Office\root\vfs\System","$env:ProgramFiles\Microsoft Office\root\vfs\SystemX86")){
       if(Test-Path -LiteralPath $p){$dlls+=@(Get-ChildItem -LiteralPath $p -Filter 'sppc*.dll' -ErrorAction SilentlyContinue|Select-Object -ExpandProperty FullName)}
     }
-    $rows[15].Status='REVIEW'
+    $rows[15].Status=if($dlls.Count){'REVIEW'}else{'NOT_CHECKED'}
     $rows[15].Evidence=if($dlls.Count){$dlls -join '; '}else{'Không tìm thấy DLL tại 2 thư mục VFS; chưa thẩm định Office toàn diện.'}
-    $rows[15].Action='Xác minh chữ ký và dùng Microsoft Office Online Repair khi cần.'
+    $rows[15].Action='Xác minh chữ ký DLL; nếu Office hỏng, dùng Settings > Apps > Microsoft Office > Modify > Online Repair.'
     $offHits=@($base.Issues|Where-Object {$_.Scope -eq 'Office' -and ($_.Id -like 'KMS-*' -or $_.Id -eq 'WMI-KMS')})
-    $rows[16].Status=if($offHits.Count){'WARN'}else{'REVIEW'}
+    $rows[16].Status=if($offHits.Count){'WARN'}else{'NOT_CHECKED'}
     $rows[16].Evidence=if($offHits.Count){$offHits.Evidence -join '; '}else{'Không thấy máy chủ KMS Office ở bộ quét v1; chưa đủ phạm vi Office.'}
     $rows[16].Action='Xác minh Office OSPP/ClickToRun và giấy phép Volume hợp pháp.'
     $rows[17].Action='Đối chiếu ClickToRun ProductReleaseIds, SKU và chứng từ.'
@@ -404,36 +404,66 @@ function LF-DeepDisplay($Scan){
     $w=@($Scan.Items|Where-Object Status -EQ 'WARN').Count
     $r=@($Scan.Items|Where-Object Status -EQ 'REVIEW').Count
     $n=@($Scan.Items|Where-Object Status -EQ 'NOT_CHECKED').Count
+    $info=@($Scan.Items|Where-Object Status -EQ 'INFO').Count
     Write-Host (" Thiết bị: {0}  |  Quét nền: {1:n1}s" -f $Scan.Device,($Scan.DurationMs/1000))
-    Write-Host (" {0} đạt  |  {1} cảnh báo  |  {2} cần xem  |  {3} chưa quét" -f $p,$w,$r,$n) -ForegroundColor Cyan
+    Write-Host (" {0} đạt  |  {1} cảnh báo  |  {2} cần xem  |  {3} chưa quét  |  {4} thông tin" -f $p,$w,$r,$n,$info) -ForegroundColor Cyan
     Write-Host ('-'*56) -ForegroundColor DarkGray
     foreach($it in $Scan.Items) {
-      $status=switch($it.Status){'PASS'{'ĐẠT'}'WARN'{'CẢNH BÁO'}'REVIEW'{'CẦN XEM'}default{'CHƯA QUÉT'}}
-      $color=switch($it.Status){'PASS'{'Green'}'WARN'{'Red'}'REVIEW'{'Yellow'}default{'DarkGray'}}
+      $status=switch($it.Status){'PASS'{'ĐẠT'}'WARN'{'CẢNH BÁO'}'REVIEW'{'CẦN XEM'}'INFO'{'THÔNG TIN'}default{'CHƯA QUÉT'}}
+      $color=switch($it.Status){'PASS'{'Green'}'WARN'{'Red'}'REVIEW'{'Yellow'}'INFO'{'Cyan'}default{'DarkGray'}}
       Write-Host (" {0,2}. {1,-10} {2}" -f $it.Id,$status,$it.Name) -ForegroundColor $color
     }
     Write-Host ('-'*56) -ForegroundColor DarkGray
-    Write-Host ' 2 = bằng chứng từng mục  |  3 = kế hoạch  |  4 = chọn lệnh sửa  |  0 = menu' -ForegroundColor Cyan
+    Write-Host ' 2 = bằng chứng từng mục  |  3 = kế hoạch  |  4 = menu sửa bằng số  |  0 = menu' -ForegroundColor Cyan
     Write-Host ' CẦN XEM/CHƯA QUÉT chưa phải lỗi đã xác nhận; chỉ sửa mục có hành động phù hợp.' -ForegroundColor Yellow
-    if($n -or $r){Write-Host ' Chưa thể kết luận đạt đầy đủ 19 nhóm.' -ForegroundColor Yellow}
+    if($info){Write-Host ' THÔNG TIN chỉ để tham khảo, không yêu cầu sửa.' -ForegroundColor Cyan}
+    if($w -or $n -or $r -or $info){Write-Host ' Chưa thể kết luận đạt đầy đủ 19 nhóm.' -ForegroundColor Yellow}
+}
+function LF-DeepActionNumbers([int]$Id) {
+    switch ($Id) {
+        { $_ -in @(1,2,3,18) } { return @('5') }
+        { $_ -in @(4,17) } { return @('1') }
+        7 { return @('3','4') }
+        14 { return @('2') }
+        default { return @() }
+    }
+}
+function LF-DeepActionLabel([string]$Choice) {
+    switch ($Choice) {
+        '1' { return 'Sửa cấu hình KMS đủ điều kiện trong Registry' }
+        '2' { return 'Gỡ dòng hosts đủ điều kiện sau sao lưu' }
+        '3' { return 'Chạy SFC kiểm tra và sửa tệp hệ thống' }
+        '4' { return 'Chạy DISM sửa kho thành phần Windows' }
+        '5' { return 'Xem hoặc nhập key chính hãng' }
+        default { return 'Không rõ hành động' }
+    }
 }
 function LF-DeepDetail($Scan,[int]$Id) {
     if($Id -lt 1 -or $Id -gt 19){Write-Warning 'Nhập số từ 1 đến 19.';return}
     $it=$Scan.Items[$Id-1]
     LF-Title ("CHI TIẾT #{0:d2}" -f $Id)
-    $label=switch($it.Status){'PASS'{'Đạt'}'WARN'{'Cảnh báo'}'REVIEW'{'Cần xem'}default{'Chưa quét'}}
+    $label=switch($it.Status){'PASS'{'Đạt'}'WARN'{'Cảnh báo'}'REVIEW'{'Cần xem'}'INFO'{'Thông tin'}default{'Chưa quét'}}
     Write-Host (" {0}  |  {1}" -f $it.Name,$label) -ForegroundColor Cyan
     Write-Host ' Bằng chứng:' -ForegroundColor Gray
     Write-Host ("  {0}" -f $it.Evidence)
     Write-Host ' Đề xuất:' -ForegroundColor Gray
     Write-Host ("  {0}" -f $it.Action)
+    $actions = @(LF-DeepActionNumbers $Id)
+    if ($actions.Count) {
+        Write-Host (' Hành động liên quan: số ' + ($actions -join ', ') + '. Chọn mục 4 để mở menu sửa.') -ForegroundColor Cyan
+    } else {
+        Write-Host ' Chưa có thao tác sửa tự động đủ an toàn cho mục này.' -ForegroundColor Yellow
+    }
     if ($it.Status -eq 'NOT_CHECKED') {
-        Write-Host ' Chưa có phép kiểm đủ tin cậy cho mục này; không có thao tác sửa tự động.' -ForegroundColor Yellow
+        Write-Host ' Phép kiểm mục này chưa đầy đủ; hành động liên quan chỉ chạy nếu bước kiểm tra riêng đủ điều kiện.' -ForegroundColor Yellow
+    }
+    if ($it.Status -eq 'INFO') {
+        Write-Host ' Đây là số liệu tham khảo; không có lỗi cần sửa từ riêng mục này.' -ForegroundColor Cyan
     }
 }
 function LF-DeepFollowUp($Scan) {
     while ($true) {
-        $choice = Read-Host 'Từ kết quả quét: 2=chi tiết, 3=kế hoạch, 4=lệnh sửa, 0=menu'
+        $choice = Read-Host 'Từ kết quả quét: 2=chi tiết, 3=kế hoạch, 4=menu sửa bằng số, 0=menu'
         switch ($choice) {
             '2' {
                 $id = 0
@@ -564,7 +594,7 @@ function LF-RepairHosts($Scan) {
 function LF-DeepPlan($Scan) {
     LF-Title 'KẾ HOẠCH XỬ LÝ'
     $fixes = @($Scan.Base.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
-    Write-Host (" [R] Registry: {0} giá trị đủ điều kiện xử lý." -f $fixes.Count) -ForegroundColor $(if($fixes.Count){'Green'}else{'Yellow'})
+    Write-Host (" [1] Registry: {0} giá trị đủ điều kiện xử lý." -f $fixes.Count) -ForegroundColor $(if($fixes.Count){'Green'}else{'Yellow'})
     if ($fixes.Count) {
         foreach ($f in $fixes) { Write-Host ("     {0}: {1} / {2}" -f $f.Id,$f.RegistryPath,$f.ValueName) }
     } else {
@@ -575,24 +605,30 @@ function LF-DeepPlan($Scan) {
     try {
         $hosts = LF-InspectHosts
         if ($Scan.Base.DomainJoinedOrUnknown) {
-            Write-Host ' [H] Hosts: khóa sửa vì máy thuộc domain hoặc chưa xác minh được domain.' -ForegroundColor Yellow
+            Write-Host ' [2] Hosts: khóa sửa vì máy thuộc domain hoặc chưa xác minh được domain.' -ForegroundColor Yellow
         } else {
-            Write-Host (" [H] Hosts: {0} dòng có thể gỡ sau sao lưu và xác nhận." -f $hosts.SafeLines.Count) -ForegroundColor $(if($hosts.SafeLines.Count){'Green'}else{'Gray'})
+            Write-Host (" [2] Hosts: {0} dòng có thể gỡ sau sao lưu và xác nhận." -f $hosts.SafeLines.Count) -ForegroundColor $(if($hosts.SafeLines.Count){'Green'}else{'Gray'})
         }
         if ($hosts.ManualLines.Count) { Write-Host ("     {0} dòng chứa tên miền khác cần kiểm tra thủ công." -f $hosts.ManualLines.Count) -ForegroundColor Yellow }
-    } catch { Write-Host (' [H] Hosts: ' + $_.Exception.Message) -ForegroundColor Yellow }
-    Write-Host ' [S] Chạy sfc.exe /scannow: kiểm tra và sửa tệp hệ thống khi cần.' -ForegroundColor White
-    Write-Host ' [D] Chạy dism.exe /Online /Cleanup-Image /RestoreHealth: sửa kho thành phần Windows.' -ForegroundColor White
-    Write-Host ' [K] Key chính hãng: xem key đã cài, nhập key Windows/Office phù hợp.' -ForegroundColor White
-    Write-Host ' R/H: chọn hành động, nhấn Y; chương trình tự sao lưu, xác minh rồi mới sửa. Không cần sao lưu trước.' -ForegroundColor Cyan
-    Write-Host ' S/D và nhập key có xác nhận riêng; bản sao Registry/hosts không hoàn tác được các thao tác này.' -ForegroundColor Yellow
+    } catch { Write-Host (' [2] Hosts: ' + $_.Exception.Message) -ForegroundColor Yellow }
+    Write-Host ' [3] SFC: kiểm tra và sửa tệp hệ thống khi cần.' -ForegroundColor White
+    Write-Host ' [4] DISM: sửa kho thành phần Windows.' -ForegroundColor White
+    Write-Host ' [5] Key chính hãng: xem key đã cài, nhập key Windows/Office phù hợp.' -ForegroundColor White
+    Write-Host ' [6] Chọn số mục quét (1-19) để xem cách xử lý tương ứng.' -ForegroundColor White
+    Write-Host ' Mục 1/2: sau khi chọn, nhấn Y; chương trình tự sao lưu, xác minh rồi mới sửa.' -ForegroundColor Cyan
+    Write-Host ' Mục 3/4/5 có xác nhận riêng; bản sao Registry/hosts không hoàn tác được các thao tác này.' -ForegroundColor Yellow
     Write-Host ''
     Write-Host ' Các mục cảnh báo, cần xem hoặc chưa quét:' -ForegroundColor Cyan
-    foreach ($it in @($Scan.Items | Where-Object { $_.Status -ne 'PASS' })) {
+    foreach ($it in @($Scan.Items | Where-Object { $_.Status -notin @('PASS','INFO') })) {
         $label = switch ($it.Status) { 'WARN' {'CẢNH BÁO'} 'REVIEW' {'CẦN XEM'} default {'CHƯA QUÉT'} }
         Write-Host ("  {0,2}. {1,-11} {2}" -f $it.Id,$label,$it.Name) -ForegroundColor $(if($it.Status -eq 'WARN'){'Red'}else{'Yellow'})
         Write-Host ('      ' + $it.Action) -ForegroundColor Gray
+        $actions=@(LF-DeepActionNumbers $it.Id)
+        if ($actions.Count) { Write-Host ('      Hành động liên quan: ' + ($actions -join ', ')) -ForegroundColor Cyan }
+        else { Write-Host '      Chưa có lệnh sửa tự động an toàn.' -ForegroundColor DarkGray }
     }
+    $infoIds=@($Scan.Items | Where-Object { $_.Status -eq 'INFO' } | Select-Object -ExpandProperty Id)
+    if ($infoIds.Count) { Write-Host (' Mục thông tin không cần sửa: ' + ($infoIds -join ', ') + '.') -ForegroundColor Cyan }
     Write-Host ' Xem bằng chứng tại Sửa lỗi chuyên sâu > 2. CẦN XEM/CHƯA QUÉT không tự chứng minh có lỗi.' -ForegroundColor Yellow
     Write-Host ' 19 nhóm là mục kiểm tra; chỉ những hành động đủ điều kiện mới có thể sửa tự động.' -ForegroundColor Yellow
 }
@@ -604,23 +640,22 @@ function LF-DeepReport($Scan,[string]$Stage='scan'){
 }
 function LF-DeepSystem([string]$Tool){
     if(-not (LF-Admin)){Write-Warning 'Cần chạy PowerShell với quyền Administrator.';return $false}
+    Write-Warning 'Lệnh này có thể thay đổi Windows. Bản sao Registry/hosts không hoàn tác được thay đổi của SFC/DISM.'
     if($Tool -eq 'SFC'){
-      if((Read-Host 'Gõ SFC để xác nhận sfc /scannow (có thể sửa file hệ thống)') -cne 'SFC'){return $false}
+      if(([string](Read-Host 'Chạy sfc /scannow? [Y/N]')).Trim().ToUpperInvariant() -cne 'Y'){Write-Host 'Đã hủy.';return $false}
       & sfc.exe /scannow | Out-Host
     }else{
-      if((Read-Host 'Gõ DISM để xác nhận DISM /RestoreHealth (có thể sửa component store)') -cne 'DISM'){return $false}
+      if(([string](Read-Host 'Chạy DISM /RestoreHealth? [Y/N]')).Trim().ToUpperInvariant() -cne 'Y'){Write-Host 'Đã hủy.';return $false}
       & dism.exe /Online /Cleanup-Image /RestoreHealth | Out-Host
     }
     Write-Host ('Exit code: '+$LASTEXITCODE)
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Lệnh báo lỗi. Xem mã thoát ở trên và kiểm tra lại Windows.' }
     Write-Warning 'Sau sửa, phải kiểm tra lại trạng thái bản quyền và khởi động lại nếu hệ thống yêu cầu.'
     return $true
 }
-function LF-DeepAction($Scan) {
-    LF-DeepPlan $Scan
-    Write-Host ''
-    $opt = (Read-Host 'Chọn R=Registry, H=Hosts, S=SFC, D=DISM, K=Key, 0=Hủy').ToUpperInvariant()
-    switch ($opt) {
-        'R' {
+function LF-DeepRunAction($Scan,[string]$Choice) {
+    switch ($Choice) {
+        '1' {
             $eligible = @($Scan.Base.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
             if (-not $eligible.Count) {
                 Write-Host 'Chưa phát hiện giá trị Registry đủ điều kiện sửa. Chưa cần sao lưu; không có gì bị thay đổi.' -ForegroundColor Yellow
@@ -635,18 +670,59 @@ function LF-DeepAction($Scan) {
                 Write-Host 'Registry đã thay đổi. Hãy quét lại để có kết luận mới.' -ForegroundColor Yellow
             }
         }
-        'H' {
+        '2' {
             if (LF-RepairHosts $Scan) {
                 $script:LFLastDeep=$null; $script:LFLastScan=$null
                 Write-Host 'Hosts đã thay đổi. Hãy quét lại để có kết luận mới.' -ForegroundColor Yellow
             }
         }
-        'S' { if (LF-DeepSystem 'SFC') { $script:LFLastDeep=$null; $script:LFLastScan=$null } }
-        'D' { if (LF-DeepSystem 'DISM') { $script:LFLastDeep=$null; $script:LFLastScan=$null } }
-        'K' { LF-KeyMenu; $script:LFLastDeep=$null; $script:LFLastScan=$null }
+        '3' { if (LF-DeepSystem 'SFC') { $script:LFLastDeep=$null; $script:LFLastScan=$null } }
+        '4' { if (LF-DeepSystem 'DISM') { $script:LFLastDeep=$null; $script:LFLastScan=$null } }
+        '5' { LF-KeyMenu; $script:LFLastDeep=$null; $script:LFLastScan=$null }
         '0' { Write-Host 'Đã hủy.' }
         default { Write-Warning 'Lựa chọn không hợp lệ.' }
     }
+}
+function LF-DeepItemGuide($Scan) {
+    $id=0
+    $inputId=Read-Host 'Nhập số mục quét cần xử lý (1-19, 0=hủy)'
+    if (-not [int]::TryParse($inputId,[ref]$id) -or $id -lt 0 -or $id -gt 19) {
+        Write-Warning 'Nhập số từ 0 đến 19.'; return
+    }
+    if ($id -eq 0) { Write-Host 'Đã hủy.'; return }
+    LF-DeepDetail $Scan $id
+    $actions=@(LF-DeepActionNumbers $id)
+    if (-not $actions.Count) {
+        Write-Host 'Mục này chỉ có hướng kiểm tra thủ công; chưa có lệnh sửa an toàn trong công cụ.' -ForegroundColor Yellow
+        return
+    }
+    Write-Host ' Hành động liên quan:' -ForegroundColor Cyan
+    foreach ($action in $actions) { Write-Host ('  ' + $action + '. ' + (LF-DeepActionLabel $action)) }
+    Write-Host '  0. Quay lại'
+    $choice=Read-Host 'Chọn số hành động'
+    if ($choice -eq '0') { Write-Host 'Đã hủy.'; return }
+    if ($actions -notcontains $choice) { Write-Warning 'Hành động không thuộc mục quét này.'; return }
+    LF-DeepRunAction $Scan $choice
+}
+function LF-DeepAction($Scan) {
+    LF-Title 'CHỌN HÀNH ĐỘNG SỬA'
+    $fixes=@($Scan.Base.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
+    $hostsLabel='chưa đọc được'
+    try {
+        $hostsReview=LF-InspectHosts
+        $hostsLabel=if($Scan.Base.DomainJoinedOrUnknown){'bị khóa: máy thuộc domain hoặc chưa xác minh'}else{"$($hostsReview.SafeLines.Count) dòng đủ điều kiện"}
+    } catch { $hostsLabel='chưa đọc được; xem chi tiết khi chọn' }
+    Write-Host (" 1. Sửa cấu hình KMS trong Registry ({0} mục; nhóm quét 4, 17)" -f $fixes.Count)
+    Write-Host (" 2. Gỡ chuyển hướng máy chủ kích hoạt trong hosts ({0}; nhóm 14)" -f $hostsLabel)
+    Write-Host ' 3. Tùy chọn: chạy SFC sửa tệp hệ thống (nhóm 7)'
+    Write-Host ' 4. Tùy chọn: chạy DISM sửa kho thành phần Windows (nhóm 7)'
+    Write-Host ' 5. Xem hoặc nhập key Windows/Office chính hãng (nhóm 1, 2, 3, 18)'
+    Write-Host ' 6. Chọn mục quét 1-19 để xem hướng xử lý'
+    Write-Host ' 0. Quay lại'
+    Write-Host ' Mục 1/2 tự sao lưu sau khi bạn xác nhận Y. Mục 3/4/5 có xác nhận riêng.' -ForegroundColor Cyan
+    $choice=Read-Host 'Chọn số'
+    if ($choice -eq '6') { LF-DeepItemGuide $Scan }
+    else { LF-DeepRunAction $Scan $choice }
 }
 function LF-DeepMenu {
   $scan=$script:LFLastDeep

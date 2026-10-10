@@ -67,7 +67,7 @@ jobs:
           $scan = LF-DeepInspect
           if (@($scan.Items).Count -ne 19) { throw "Expected 19 checks but received $(@($scan.Items).Count)" }
           foreach ($item in $scan.Items) {
-            if ($item.Status -notin @('PASS','WARN','REVIEW','NOT_CHECKED')) {
+            if ($item.Status -notin @('PASS','WARN','REVIEW','NOT_CHECKED','INFO')) {
               throw "Invalid check status: $($item.Id) $($item.Status)"
             }
           }

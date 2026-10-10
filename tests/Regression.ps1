@@ -29,11 +29,18 @@ $sample = [pscustomobject]@{
         Issues=@(); DomainJoinedOrUnknown=$true; WindowsLicensed=$true;
         OfficeSafe=$true; KmsVolume=$false
     }
-    Items = @([pscustomobject]@{ Id=1; Name='Mục thử'; Status='REVIEW'; Action='Kiểm tra thủ công.' })
+    Items = @(1..19 | ForEach-Object { [pscustomobject]@{ Id=$_; Name=('Mục thử ' + $_); Status='REVIEW'; Evidence='Dữ liệu thử'; Action='Kiểm tra thủ công.' } })
+}
+$sample.Items[9].Status='INFO'; $sample.Items[14].Status='INFO'
+$summary = (LF-DeepDisplay $sample 6>&1 | Out-String)
+$infoDetail = (LF-DeepDetail $sample 10 6>&1 | Out-String)
+if ($summary -notmatch '2 thông tin' -or $infoDetail -notmatch 'không có lỗi cần sửa') {
+    throw 'Informational checks were shown as repairable errors.'
 }
 function LF-InspectHosts { return [pscustomobject]@{SafeLines=@(); ManualLines=@()} }
 $plan = (LF-DeepPlan $sample 6>&1 | Out-String)
-if ($plan -notmatch 'Khóa sửa' -or $plan -notmatch '19 nhóm là mục kiểm tra') {
+if ($plan -notmatch 'Khóa sửa' -or $plan -notmatch '19 nhóm là mục kiểm tra' -or
+    $plan -notmatch '\[1\] Registry' -or $plan -notmatch 'Mục thông tin không cần sửa') {
     throw 'Repair plan did not explain unavailable actions.'
 }
 $script:answers = New-Object 'System.Collections.Generic.Queue[string]'
@@ -41,15 +48,39 @@ $script:answers.Enqueue('0')
 function Read-Host { param([string]$Prompt) return $script:answers.Dequeue() }
 $action = (LF-DeepAction $sample 6>&1 | Out-String)
 if ($action -notmatch 'Đã hủy') { throw 'Repair action menu did not accept cancel.' }
+$script:answers.Enqueue('N')
+$cancelledSystem = (LF-DeepSystem 'SFC' 6>&1 | Out-String)
+if ($cancelledSystem -notmatch 'Đã hủy') { throw 'SFC repair did not require explicit confirmation.' }
 $script:systemCalls = 0
 function LF-DeepSystem { param([string]$Tool) if($Tool -ne 'SFC'){throw 'Wrong repair tool'}; $script:systemCalls++; return $false }
-$script:answers.Enqueue('S')
+$script:answers.Enqueue('3')
 $null = LF-DeepAction $sample 6>&1
 if ($script:systemCalls -ne 1) { throw 'SFC action was not routed to its command handler.' }
-$script:answers.Enqueue('R')
+$script:answers.Enqueue('S')
+$oldLetter = (LF-DeepAction $sample 3>&1 6>&1 | Out-String)
+if ($oldLetter -notmatch 'Lựa chọn không hợp lệ' -or $script:systemCalls -ne 1) {
+    throw 'Letter-based repair menu is still active.'
+}
+$script:answers.Enqueue('1')
 $noFix = (LF-DeepAction $sample 6>&1 | Out-String)
 if ($noFix -notmatch 'Chưa cần sao lưu' -or $noFix -notmatch 'Lý do khóa') {
     throw 'No-op Registry action did not explain why it skipped repair.'
+}
+if ((@(LF-DeepActionNumbers 7) -join ',') -cne '3,4' -or
+    (@(LF-DeepActionNumbers 14) -join ',') -cne '2' -or
+    @(LF-DeepActionNumbers 15).Count -ne 0) {
+    throw 'Deep scan groups were mapped to the wrong repair menu numbers.'
+}
+$script:guidedChoice = ''
+function LF-DeepRunAction { param($Scan,[string]$Choice) $script:guidedChoice=$Choice }
+$script:answers.Enqueue('6'); $script:answers.Enqueue('14'); $script:answers.Enqueue('2')
+$null = LF-DeepAction $sample 6>&1
+if ($script:guidedChoice -cne '2') { throw 'Deep item guide did not route hosts to action 2.' }
+$script:guidedChoice = ''
+$script:answers.Enqueue('6'); $script:answers.Enqueue('15')
+$manualOnly = (LF-DeepAction $sample 6>&1 | Out-String)
+if ($script:guidedChoice -or $manualOnly -notmatch 'chưa có lệnh sửa an toàn') {
+    throw 'Deep item guide offered an unsupported automatic repair.'
 }
 
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('LicenseFix-Regression-' + [guid]::NewGuid().ToString('N'))

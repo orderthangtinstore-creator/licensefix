@@ -1,8 +1,8 @@
-# LicenseFix v2.1.2-beta – đối chiếu 19 nhóm kiểm tra License Info
+# LicenseFix v2.1.4-beta – đối chiếu 19 nhóm kiểm tra License Info
 
 Đối chiếu về **phạm vi chức năng**, không sao chép kết luận hay bảo đảm 19/19 mục luôn xanh. Nguồn tham khảo: [tiennnict/license.info.vn](https://github.com/tiennnict/license.info.vn) (Apache-2.0).
 
-| # | Nhóm kiểm tra | Hỗ trợ trong LicenseFix 2.1.2-beta | Can thiệp |
+| # | Nhóm kiểm tra | Hỗ trợ trong LicenseFix 2.1.4-beta | Can thiệp |
 |---|---|---|---|
 | 1 | Thông tin Windows và OEM BIOS | Quét sâu đọc trạng thái Windows; menu key đọc 5 ký tự cuối key OEM BIOS nếu có | Không |
 | 2 | Windows WMI/SPP | Có | Không gỡ key |
@@ -24,10 +24,10 @@
 | 18 | Retail sang Volume Office | Không tự phân tích lịch sử chuyển đổi; menu key tách sản phẩm đang cài khỏi bản ghi WMI cũ | Không tự chuyển kênh |
 | 19 | TSforge Office | Chưa | Không |
 
-**Giới hạn an toàn:** công cụ khóa sửa Registry nếu Windows chưa xác nhận Licensed, có sản phẩm KMS/Volume, máy thuộc domain hoặc không xác minh được domain, hay một giấy phép Office phát hiện được chưa xác nhận hợp lệ. Chính sách `NoGenTicket` không tự xóa. Chỉ các giá trị Registry KMS đủ điều kiện mới được xử lý sau sao lưu và xác nhận `SUA`. Sửa `hosts` có điều kiện riêng và xác nhận `HOSTS`.
+**Giới hạn an toàn:** công cụ khóa sửa Registry nếu Windows chưa xác nhận Licensed, có sản phẩm KMS/Volume, máy thuộc domain hoặc không xác minh được domain, hay một giấy phép Office phát hiện được chưa xác nhận hợp lệ. Chính sách `NoGenTicket` không tự xóa. Chỉ các giá trị Registry KMS đủ điều kiện mới được xử lý sau khi chọn `1`, xác nhận `Y`, sao lưu và xác minh. Sửa `hosts` có điều kiện riêng qua mục `2` và xác nhận `Y`.
 
 **Không dùng để che giấu:** không sửa timestamps, không xóa lịch sử hay dữ liệu cấp phép nhằm đánh lừa công cụ kiểm tra. Không khẳng định nguồn gốc pháp lý của bản quyền.
 
-**Menu sửa:** mục 2 ở menu chính trình bày kế hoạch và lý do khóa, mục 3 cho chọn `R/H/S/D/K`; không có nghĩa cả 19 nhóm đều có lệnh sửa tự động. Key Windows/Office chỉ được nhập sau xác nhận riêng, với điều kiện phù hợp và key do người dùng sở hữu.
+**Menu sửa:** mục 2 ở menu chính trình bày kế hoạch và lý do khóa, mục 3 cho chọn hành động bằng số `1–6`. Mục `6` nhận số hạng mục quét `1–19` và dẫn tới hành động liên quan hoặc nêu rõ vì sao chỉ có hướng kiểm tra thủ công. Nhãn **THÔNG TIN** không cần sửa; **CHƯA QUÉT** không được coi là đạt. Key Windows/Office chỉ được nhập sau xác nhận riêng, với điều kiện phù hợp và key do người dùng sở hữu.
 
 **Chưa kiểm thử thao tác sửa hoặc nhập key thật:** các kiểm tra chỉ đọc và đường đi menu đã chạy trên Windows PowerShell 5.1; thao tác thay đổi cần kiểm thử trên VM trước khi dùng rộng rãi.
