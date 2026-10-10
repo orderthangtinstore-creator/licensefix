@@ -148,7 +148,7 @@ function LF-Scan {
         $p = Join-Path $store $name
         if (Test-Path -LiteralPath $p) {
             $time = (Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue).LastWriteTime
-            if ($time) { [void]$notes.Add("Thời gian sửa đổi SPP $name: $time (chỉ tham khảo, không chỉnh thời gian).") }
+            if ($time) { [void]$notes.Add("Thời gian sửa đổi SPP ${name}: $time (chỉ tham khảo, không chỉnh thời gian).") }
         }
     }
     Write-Host ' [3/3] Đang kiểm tra tác vụ và dịch vụ...' -ForegroundColor DarkCyan
