@@ -22,7 +22,7 @@ The bootstrapper fetches `LicenseFix.ps1`, checks the SHA-256 of the downloaded 
 
 Current SHA-256 of `LicenseFix.ps1` in this GitHub release:
 
-`C189B55CAB8DD0235D5BFBB3A6067DD793D6678418E2909AB29CD161973A8AD5`
+`8CDBFFBE6AF5DDA26C7F570786B208BA3C04D784316930910E68465FA8BD6ACB`
 
 ## Optional Cloudflare domain
 
@@ -37,5 +37,5 @@ It should return PowerShell source, not HTML, 404, or a JavaScript page. After m
 ## Notes
 
 - The repository is public. Never commit genuine product keys, personal records, credentials, or Windows license-store backups.
-- No known Windows run has been completed for this preview; testing is required before production repairs.
+- Read-only inventory and menu regression checks ran on Windows PowerShell 5.1. Registry/hosts repairs and real key installation remain untested and require VM validation before production use.
 - The original draft ZIP from earlier messages may have a different core script/hash. Use GitHub `main` as the source of truth for the online launcher.

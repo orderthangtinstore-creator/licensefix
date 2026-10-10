@@ -1,13 +1,13 @@
-# LicenseFix v2.0.2-beta - verified online launcher (PowerShell 5.1+, Windows only)
+# LicenseFix v2.1.0-beta - verified online launcher (PowerShell 5.1+, Windows only)
 # Keep this launcher ASCII without a BOM for Invoke-RestMethod | Invoke-Expression.
 # Usage:
 # irm https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/launch.ps1 | iex
 # This is independent of license.info.vn and does not modify Windows until user confirms inside LicenseFix.
 
 $ErrorActionPreference = 'Stop'
-$lfVersion = '2.0.2-beta'
+$lfVersion = '2.1.0-beta'
 $lfSource = 'https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/LicenseFix.ps1'
-$lfExpectedSHA256 = 'C189B55CAB8DD0235D5BFBB3A6067DD793D6678418E2909AB29CD161973A8AD5'
+$lfExpectedSHA256 = '8CDBFFBE6AF5DDA26C7F570786B208BA3C04D784316930910E68465FA8BD6ACB'
 
 try {
     if ($PSVersionTable.PSVersion.Major -lt 5) {

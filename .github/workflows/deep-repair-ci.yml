@@ -50,6 +50,10 @@ jobs:
           }
           Write-Host 'Entry points verified'
 
+      - name: Check menu routes and key labels without repairs
+        shell: powershell
+        run: .\tests\Regression.ps1
+
       - name: Smoke test 19 checks on Windows (read-only)
         shell: powershell
         run: |

@@ -1,4 +1,4 @@
-# LicenseFix v2.0.2-beta — sửa lỗi chuyên sâu
+# LicenseFix v2.1.0-beta — sửa lỗi chuyên sâu
 
 Bản thử nghiệm kiểm tra **19 nhóm** tương ứng phạm vi License Info. Không có nghĩa đã triển khai đầy đủ toàn bộ quy tắc gốc; phần nào chưa đủ bằng chứng sẽ được báo **NOT_CHECKED**, thay vì tô xanh.
 
@@ -16,6 +16,9 @@ Bản thử nghiệm kiểm tra **19 nhóm** tương ứng phạm vi License Inf
 4. Sao lưu rồi gỡ riêng những dòng `hosts` chỉ ánh xạ máy chủ kích hoạt Microsoft, sau xác nhận gõ `HOSTS`; dòng có tên miền khác được giữ nguyên.
 5. SFC/DISM theo xác nhận riêng, không tự kích hoạt.
 6. Xuất báo cáo JSON tại `C:\ProgramData\LicenseFix\Reports`.
+7. Mở menu key riêng để xem 5 ký tự cuối của key, sản phẩm Office đang cài và chọn cách kích hoạt chính thức. Nhập key không được khôi phục bằng bản sao Registry/`hosts`.
+
+Ở menu chính, mục 2 mở trực tiếp kế hoạch xử lý; mục 3 mở danh sách hành động sau khi quét nếu cần. Nếu không có giá trị Registry đủ điều kiện sửa, chương trình hiện lý do thay vì quay về âm thầm.
 
 **Không** sửa đổi timestamp `data.dat`, `tokens.dat`, can thiệp registry để che giấu giấy phép, xóa lịch sử kiểm toán, xóa key OEM/Volume, hoặc bảo đảm 19/19 màu xanh.
 
