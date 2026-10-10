@@ -1,0 +1,36 @@
+name: Windows PowerShell syntax checks
+
+on:
+  push:
+    branches:
+      - feature/deep-clean-v1.2
+  pull_request:
+
+jobs:
+  parse-windows-powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse LicenseFix with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'LicenseFix.ps1'),
+            [ref]$tokens,
+            [ref]$parseErrors
+          )
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Host 'PowerShell 5.1 parser: PASS'
+      - name: Check deep mode exists
+        shell: powershell
+        run: |
+          $source = Get-Content -LiteralPath .\LicenseFix.ps1 -Raw
+          if ($source -notmatch 'function LF-DeepMode' -or $source -notmatch "'Deep'\s*\{\s*LF-DeepMode") {
+            throw 'Deep mode was not wired into the main script.'
+          }
+          Write-Host 'Deep mode routing: PASS'
