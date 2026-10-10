@@ -44,3 +44,23 @@ jobs:
             if ($source -notmatch ('function\s+' + $name + '\b')) { throw "Missing $name" }
           }
           Write-Host 'Entry points verified'
+
+      - name: Smoke test 19 checks on Windows (read-only)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $all = [IO.File]::ReadAllText((Resolve-Path '.\LicenseFix.ps1').Path, [Text.Encoding]::UTF8)
+          $marker = "if (-not `$env:SystemRoot) { throw 'Windows only.' }"
+          $i = $all.LastIndexOf($marker, [StringComparison]::Ordinal)
+          if ($i -lt 0) { throw 'Entry marker changed; refuse unsafe smoke test' }
+          # Dot-source function definitions only, omit the interactive entry point.
+          . ([scriptblock]::Create($all.Substring(0, $i)))
+          $scan = LF-DeepInspect
+          if (@($scan.Items).Count -ne 19) { throw "Expected 19 checks but received $(@($scan.Items).Count)" }
+          foreach ($item in $scan.Items) {
+            if ($item.Status -notin @('PASS','WARN','REVIEW','NOT_CHECKED')) {
+              throw "Invalid check status: $($item.Id) $($item.Status)"
+            }
+          }
+          LF-DeepDisplay $scan
+          Write-Host 'Read-only smoke test passed'
