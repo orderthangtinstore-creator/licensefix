@@ -1,6 +1,8 @@
-# LicenseFix v2.1.1-beta — sửa lỗi chuyên sâu
+# LicenseFix v2.1.2-beta — sửa lỗi chuyên sâu
 
 Bản thử nghiệm kiểm tra **19 nhóm** tương ứng phạm vi License Info. Không có nghĩa đã triển khai đầy đủ toàn bộ quy tắc gốc; phần nào chưa đủ bằng chứng sẽ được báo **NOT_CHECKED**, thay vì tô xanh.
+
+Sau khi chọn quét, màn hình kết quả nhận trực tiếp `2` để xem chi tiết, `3` để xem kế hoạch, `4` để chọn lệnh xử lý và `0` để về menu chuyên sâu. Các lựa chọn này không cần nhấn Enter trước.
 
 ## Cách mở
 

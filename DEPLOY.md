@@ -22,7 +22,7 @@ The bootstrapper fetches `LicenseFix.ps1`, checks the SHA-256 of the downloaded 
 
 Current SHA-256 of `LicenseFix.ps1` in this GitHub release:
 
-`2EBCE14CC2E50D0B15F64C56FA77E4F9E4835E8B50298B6FDC636581DD9127C0`
+`9FD3A207534FFDCB9B83E40B910C9377CD4C57911EDFB95ABA927DCF95F331D9`
 
 ## Optional Cloudflare domain
 

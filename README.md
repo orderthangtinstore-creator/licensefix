@@ -1,4 +1,4 @@
-# LicenseFix v2.1.1-beta
+# LicenseFix v2.1.2-beta
 
 Công cụ kiểm tra bản quyền Windows/Office và xử lý **từng lỗi có bằng chứng** trên Windows PowerShell 5.1. Bản này vẫn cần kiểm thử trên máy ảo trước khi dùng thao tác sửa trên máy thật.
 
@@ -11,8 +11,9 @@ Launcher `launch.ps1` tải mã từ nhánh `main` và kiểm tra SHA-256 trư�
 ## Menu
 
 - Menu chính: kiểm tra, xem **kế hoạch và lý do khóa sửa** (mục 2), mở **danh sách hành động sửa được hỗ trợ** (mục 3), xuất JSON, `sfc /verifyonly`, sửa lỗi chuyên sâu, và xem/nhập key chính hãng (mục 7). Màn hình kết quả chờ Enter rồi mới quay lại.
-- Menu chuyên sâu: quét 19 nhóm, xem bằng chứng theo số mục, xem kế hoạch xử lý, chọn hành động sửa, xuất báo cáo.
+- Menu chuyên sâu: quét 19 nhóm rồi chọn ngay `2` (bằng chứng), `3` (kế hoạch), `4` (hành động sửa) hoặc `0` (quay về) tại màn hình kết quả. Các số này là lựa chọn thật, không còn bị lời nhắc Enter nuốt mất.
 - Kế hoạch xử lý liệt kê các giá trị Registry đủ điều kiện, những dòng `hosts` đủ điều kiện, cùng **lý do bị khóa**. Các mục cần xem/chưa quét được trình bày riêng; không coi chúng là lỗi đã xác nhận.
+- Mục `4` dẫn tới `R` (sao lưu rồi sửa đúng giá trị Registry đủ điều kiện), `H` (sao lưu rồi gỡ dòng hosts đủ điều kiện), `S` (chạy `sfc.exe /scannow`), `D` (chạy `dism.exe /Online /Cleanup-Image /RestoreHealth`) hoặc `K` (menu key). Các lệnh hệ thống chạy từ PowerShell sau xác nhận; kết quả phụ thuộc trạng thái máy. Phần lớn mục “CẦN XEM” chỉ là việc cần kiểm tra, không có lệnh sửa an toàn để chạy hàng loạt.
 - Hành động chuyên sâu: `R` sửa giá trị Registry đã được phép sau khi xuất `.reg`; `H` sao lưu và gỡ riêng những dòng `hosts` chỉ ánh xạ máy chủ kích hoạt Microsoft; `S` chạy `sfc /scannow`; `D` chạy `DISM /RestoreHealth`; `K` mở menu key. Mỗi hành động thay đổi hệ thống yêu cầu xác nhận. Dòng `hosts` có thêm tên miền khác được giữ lại để kiểm tra thủ công.
 
 ## Key Windows và Office

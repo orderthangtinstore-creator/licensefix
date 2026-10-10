@@ -41,6 +41,11 @@ $script:answers.Enqueue('0')
 function Read-Host { param([string]$Prompt) return $script:answers.Dequeue() }
 $action = (LF-DeepAction $sample 6>&1 | Out-String)
 if ($action -notmatch 'Đã hủy') { throw 'Repair action menu did not accept cancel.' }
+$script:systemCalls = 0
+function LF-DeepSystem { param([string]$Tool) if($Tool -ne 'SFC'){throw 'Wrong repair tool'}; $script:systemCalls++; return $false }
+$script:answers.Enqueue('S')
+$null = LF-DeepAction $sample 6>&1
+if ($script:systemCalls -ne 1) { throw 'SFC action was not routed to its command handler.' }
 $script:answers.Enqueue('')
 $cancelledReveal = (LF-ShowFullWindowsKeys ([pscustomobject]@{Windows=@()}) 6>&1 | Out-String)
 if ($cancelledReveal -notmatch 'Đã hủy') { throw 'Full key reveal did not require confirmation.' }
@@ -86,4 +91,17 @@ if ($revealed -notmatch 'AAAAA-BBBBB-CCCCC-DDDDD-EEEEE' -or
     $revealed -notmatch 'BBBBB-BBBBB-BBBBB-BBBBB-BBBBC') {
     throw 'Confirmed full-key reveal failed for synthetic data.'
 }
-Write-Host 'Menu, refresh, and key classification regression checks passed.'
+$script:planCalls=0; $script:actionCalls=0; $script:detailCalls=0
+function LF-DeepInspect { $script:LFLastDeep=$sample; return $sample }
+function LF-DeepDisplay { param($Scan) Write-Host 'SCAN RESULT' }
+function LF-DeepDetail { param($Scan,[int]$Id) if($Id -ne 6){throw 'Wrong detail ID'}; $script:detailCalls++ }
+$script:answers.Enqueue('1')
+$script:answers.Enqueue('2'); $script:answers.Enqueue('6')
+$script:answers.Enqueue('3'); $script:answers.Enqueue('4')
+$script:answers.Enqueue('0'); $script:answers.Enqueue('0')
+$null = LF-DeepMenu 6>&1
+if ($script:detailCalls -ne 1 -or $script:planCalls -ne 1 -or
+    $script:actionCalls -ne 1 -or $script:answers.Count -ne 0) {
+    throw 'Deep scan result did not route directly to detail, plan, and repair actions.'
+}
+Write-Host 'Menu, scan follow-up, refresh, and key regression checks passed.'

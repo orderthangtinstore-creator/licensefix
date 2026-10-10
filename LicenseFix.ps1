@@ -1,6 +1,6 @@
 ﻿#requires -Version 5.1
 <#
-LicenseFix v2.1.1-beta - Windows/Office license diagnostics and scoped remediation.
+LicenseFix v2.1.2-beta - Windows/Office license diagnostics and scoped remediation.
 Preview build: test on a lab PC before performing repairs.
 Independent project. Not affiliated with Microsoft or license.info.vn.
 Repairs only specifically reviewed settings after successful backups and confirmation.
@@ -11,7 +11,7 @@ Product keys change only after separate, explicit confirmation by the user.
 param([ValidateSet('Menu','Scan','Plan','Repair','Export','Deep')][string]$Mode='Menu')
 
 $ErrorActionPreference = 'Stop'
-$LFVersion = '2.1.1-beta'
+$LFVersion = '2.1.2-beta'
 $LFWindowsId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 $LFOfficeId = '0ff1ce15-a989-479d-af46-f275c6370663'
 $LFBackups = Join-Path $env:ProgramData 'LicenseFix\Backups'
@@ -396,7 +396,8 @@ function LF-DeepDisplay($Scan){
       Write-Host (" {0,2}. {1,-10} {2}" -f $it.Id,$status,$it.Name) -ForegroundColor $color
     }
     Write-Host ('-'*56) -ForegroundColor DarkGray
-    Write-Host ' Chọn 2 để xem bằng chứng; chọn 3 để xem cách xử lý và lý do khóa sửa.' -ForegroundColor Cyan
+    Write-Host ' 2 = bằng chứng từng mục  |  3 = kế hoạch  |  4 = chọn lệnh sửa  |  0 = menu' -ForegroundColor Cyan
+    Write-Host ' CẦN XEM/CHƯA QUÉT chưa phải lỗi đã xác nhận; chỉ sửa mục có hành động phù hợp.' -ForegroundColor Yellow
     if($n -or $r){Write-Host ' Chưa thể kết luận đạt đầy đủ 19 nhóm.' -ForegroundColor Yellow}
 }
 function LF-DeepDetail($Scan,[int]$Id) {
@@ -411,6 +412,30 @@ function LF-DeepDetail($Scan,[int]$Id) {
     Write-Host ("  {0}" -f $it.Action)
     if ($it.Status -eq 'NOT_CHECKED') {
         Write-Host ' Chưa có phép kiểm đủ tin cậy cho mục này; không có thao tác sửa tự động.' -ForegroundColor Yellow
+    }
+}
+function LF-DeepFollowUp($Scan) {
+    while ($true) {
+        $choice = Read-Host 'Từ kết quả quét: 2=chi tiết, 3=kế hoạch, 4=lệnh sửa, 0=menu'
+        switch ($choice) {
+            '2' {
+                $id = 0
+                $inputId = Read-Host 'Nhập số hạng mục (1-19)'
+                if ([int]::TryParse($inputId,[ref]$id)) { LF-DeepDetail $Scan $id }
+                else { Write-Warning 'Mã hạng mục không hợp lệ.' }
+            }
+            '3' { LF-DeepPlan $Scan }
+            '4' {
+                LF-DeepAction $Scan
+                if (-not $script:LFLastDeep) {
+                    Write-Host 'Trạng thái có thể đã thay đổi. Hãy quét lại trước khi xử lý tiếp.' -ForegroundColor Yellow
+                    return
+                }
+            }
+            '0' { return }
+            '' { return }
+            default { Write-Warning 'Nhập 2, 3, 4 hoặc 0.' }
+        }
     }
 }
 function LF-InspectHosts {
@@ -524,8 +549,8 @@ function LF-DeepPlan($Scan) {
         }
         if ($hosts.ManualLines.Count) { Write-Host ("     {0} dòng chứa tên miền khác cần kiểm tra thủ công." -f $hosts.ManualLines.Count) -ForegroundColor Yellow }
     } catch { Write-Host (' [H] Hosts: ' + $_.Exception.Message) -ForegroundColor Yellow }
-    Write-Host ' [S] SFC /scannow: sửa tệp hệ thống khi có bằng chứng lỗi toàn vẹn.' -ForegroundColor White
-    Write-Host ' [D] DISM /RestoreHealth: sửa kho thành phần Windows khi cần.' -ForegroundColor White
+    Write-Host ' [S] Chạy sfc.exe /scannow: kiểm tra và sửa tệp hệ thống khi cần.' -ForegroundColor White
+    Write-Host ' [D] Chạy dism.exe /Online /Cleanup-Image /RestoreHealth: sửa kho thành phần Windows.' -ForegroundColor White
     Write-Host ' [K] Key chính hãng: xem key đã cài, nhập key Windows/Office phù hợp.' -ForegroundColor White
     Write-Host ''
     Write-Host ' Các mục cảnh báo, cần xem hoặc chưa quét:' -ForegroundColor Cyan
@@ -600,7 +625,13 @@ function LF-DeepMenu {
     Write-Host ' 0. Quay về'
     $choice=Read-Host 'Chọn'
     switch($choice) {
-      '1' {Clear-Host;$scan=LF-DeepInspect;LF-DeepDisplay $scan}
+      '1' {
+        Clear-Host
+        $scan=LF-DeepInspect
+        LF-DeepDisplay $scan
+        LF-DeepFollowUp $scan
+        $scan=$script:LFLastDeep
+      }
       '2' {
         if(-not $scan){Write-Host 'Chưa quét. Hãy chọn 1 trước.' -ForegroundColor Yellow}
         else {
@@ -623,7 +654,7 @@ function LF-DeepMenu {
       '0' {}
       default {Write-Warning 'Lựa chọn không hợp lệ.'}
     }
-    if($choice -ne '0'){[void](Read-Host 'Nhấn Enter để tiếp tục')}
+    if($choice -ne '0' -and $choice -ne '1'){[void](Read-Host 'Nhấn Enter để quay về menu chuyên sâu')}
   }while($choice -ne '0')
 }
 function LF-LicenseState([int]$Code) {
