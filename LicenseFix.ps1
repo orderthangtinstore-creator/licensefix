@@ -66,6 +66,10 @@ function LF-Scan {
         try {
             $all = @(Get-CimInstance -ClassName SoftwareLicensingProduct -Filter $filter -ErrorAction Stop |
               Where-Object { $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId) })
+            if($all.Count -eq 0) {
+                $all = @(Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop |
+                  Where-Object { $_.PartialProductKey -and $_.ApplicationID -in @($LFWindowsId,$LFOfficeId) })
+            }
         } catch {
             [void]$notes.Add('WMI không hỗ trợ bộ lọc; dùng truy vấn đầy đủ.')
             $all = @(Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop |
@@ -248,7 +252,9 @@ function LF-DeepItem([int]$Id,[string]$Name,[string]$Status,[string]$Evidence,[s
     [pscustomobject]@{Id=$Id;Name=$Name;Status=$Status;Evidence=$Evidence;Action=$Action}
 }
 function LF-DeepInspect {
+    $deepWatch=[Diagnostics.Stopwatch]::StartNew()
     $base=LF-Scan
+    Write-Host ' Đang hoàn thiện 19 nhóm kiểm tra...' -ForegroundColor DarkCyan
     $titles=@(
       'Thông tin Windows/OEM BIOS','Windows SPP/WMI','Office SPP/OSPP',
       'KMS Windows','Cổng 1688 / giả lập KMS','Dấu vết công cụ kích hoạt',
@@ -276,7 +282,8 @@ function LF-DeepInspect {
       $rows[2].Action='Kiểm tra Office Account và giấy phép cho từng SKU.'
     }
     $kmsWin=@($base.Issues|Where-Object {$_.Id -like 'KMS-*' -and $_.Scope -ne 'Office'})
-    $rows[3].Status=if($kmsWin.Count){'WARN'}elseif($base.KmsVolume){'REVIEW'}else{'PASS'}
+    $kmsIncomplete=@($base.Notes | Where-Object {$_ -match 'Registry'})
+    $rows[3].Status=if($kmsWin.Count){'WARN'}elseif($base.KmsVolume -or $kmsIncomplete.Count){'REVIEW'}else{'PASS'}
     $rows[3].Evidence=if($kmsWin.Count){($kmsWin.Evidence -join '; ')}else{'Không thấy cấu hình KMS bất thường trong phạm vi v1.'}
     $rows[3].Action='Không xóa KMS doanh nghiệp; chỉ dọn cấu hình tồn dư sau khi sao lưu.'
     try{
@@ -350,7 +357,8 @@ function LF-DeepInspect {
     $rows[16].Action='Xác minh Office OSPP/ClickToRun và giấy phép Volume hợp pháp.'
     $rows[17].Action='Đối chiếu ClickToRun ProductReleaseIds, SKU và chứng từ.'
     $rows[18].Action='Dùng kiểm tra cấp phép Office, không tự đặt lại kho SPP.'
-    [pscustomobject]@{Version=$LFVersion;At=(Get-Date).ToString('o');Device=$env:COMPUTERNAME;Base=$base;Items=@($rows)}
+    $deepWatch.Stop()
+    [pscustomobject]@{Version=$LFVersion;At=(Get-Date).ToString('o');Device=$env:COMPUTERNAME;Base=$base;Items=@($rows);DurationMs=[math]::Round($deepWatch.Elapsed.TotalMilliseconds,0)}
 }
 function LF-DeepDisplay($Scan){
     LF-Title 'TỔNG QUAN QUÉT CHUYÊN SÂU'
@@ -358,7 +366,7 @@ function LF-DeepDisplay($Scan){
     $w=@($Scan.Items|Where-Object Status -EQ 'WARN').Count
     $r=@($Scan.Items|Where-Object Status -EQ 'REVIEW').Count
     $n=@($Scan.Items|Where-Object Status -EQ 'NOT_CHECKED').Count
-    Write-Host (" Thiết bị: {0}  |  Quét nền: {1:n1}s" -f $Scan.Device,($Scan.Base.DurationMs/1000))
+    Write-Host (" Thiết bị: {0}  |  Quét nền: {1:n1}s" -f $Scan.Device,($Scan.DurationMs/1000))
     Write-Host (" {0} đạt  |  {1} cảnh báo  |  {2} cần xem  |  {3} chưa quét" -f $p,$w,$r,$n) -ForegroundColor Cyan
     Write-Host ('-'*56) -ForegroundColor DarkGray
     foreach($it in $Scan.Items) {
