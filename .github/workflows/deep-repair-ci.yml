@@ -29,7 +29,11 @@ jobs:
           $launcher = Get-Content '.\launch.ps1' -Raw
           $expected = [regex]::Match($launcher, '\$lfExpectedSHA256\s*=\s*''([A-F0-9]{64})''').Groups[1].Value
           if (-not $expected) { throw 'Expected hash not found in launcher' }
-          $actual = (Get-FileHash '.\LicenseFix.ps1' -Algorithm SHA256).Hash
+          # Git on Windows may checkout LF source as CRLF; launcher downloads exact GitHub raw UTF-8 LF bytes.
+          $payload = [IO.File]::ReadAllText((Resolve-Path '.\LicenseFix.ps1').Path, [Text.Encoding]::UTF8).Replace("`r`n", "`n")
+          $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
+          $digest = [Security.Cryptography.SHA256]::Create()
+          try { $actual = [BitConverter]::ToString($digest.ComputeHash($bytes)).Replace('-', '') } finally { $digest.Dispose() }
           if ($expected -cne $actual) { throw "Hash mismatch: $expected vs $actual" }
           Write-Host "SHA256 validated $actual"
       - name: Check Deep Repair entry points
