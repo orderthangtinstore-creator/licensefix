@@ -15,14 +15,14 @@ The bootstrapper fetches `LicenseFix.ps1`, checks the SHA-256 of the downloaded 
 ## Updating the core
 
 1. Work in a branch; review changes and test on a Windows VM.
-2. Compute the SHA-256 of **the actual published UTF-8 bytes** of `LicenseFix.ps1` (not a local file with different newline endings).
-3. Update `$lfExpectedSHA256` in `launch.ps1` to that digest in the same release.
-4. Verify the raw GitHub content and try the read-only Scan first.
-5. Avoid editing production branches without revision review.
+2. Keep both `.ps1` files as LF in Git. Keep `launch.ps1` ASCII without a BOM so `irm ... | iex` works in Windows PowerShell 5.1.
+3. Compute SHA-256 from the exact Git blob or downloaded raw `LicenseFix.ps1`, including its UTF-8 BOM. A Windows working copy with CRLF can have a different hash.
+4. Update `$lfExpectedSHA256` in `launch.ps1` and run the repository CI checks.
+5. Verify the live short-domain launcher and raw GitHub bytes, then try the read-only Scan first.
 
 Current SHA-256 of `LicenseFix.ps1` in this GitHub release:
 
-`783FAC6EDF3108758A74F4897E5F0D94AA6E11D7BD0E63C02C8D40836EC19977`
+`C189B55CAB8DD0235D5BFBB3A6067DD793D6678418E2909AB29CD161973A8AD5`
 
 ## Optional Cloudflare domain
 

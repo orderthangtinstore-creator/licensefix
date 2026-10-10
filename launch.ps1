@@ -1,4 +1,5 @@
-﻿# LicenseFix v2.0.2-beta - verified online launcher (PowerShell 5.1+, Windows only)
+# LicenseFix v2.0.2-beta - verified online launcher (PowerShell 5.1+, Windows only)
+# Keep this launcher ASCII without a BOM for Invoke-RestMethod | Invoke-Expression.
 # Usage:
 # irm https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/launch.ps1 | iex
 # This is independent of license.info.vn and does not modify Windows until user confirms inside LicenseFix.
@@ -6,14 +7,14 @@
 $ErrorActionPreference = 'Stop'
 $lfVersion = '2.0.2-beta'
 $lfSource = 'https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/LicenseFix.ps1'
-$lfExpectedSHA256 = 'DC78DD88D366BD3B3DB892FD9B8C0D32079ACCD6460D0C5BDF85B5EBE6E12221'
+$lfExpectedSHA256 = 'C189B55CAB8DD0235D5BFBB3A6067DD793D6678418E2909AB29CD161973A8AD5'
 
 try {
     if ($PSVersionTable.PSVersion.Major -lt 5) {
-        throw 'Yêu cầu Windows PowerShell 5.1 trở lên.'
+        throw 'Windows PowerShell 5.1 or later is required.'
     }
     if (-not $env:WINDIR -or -not $env:LOCALAPPDATA) {
-        throw 'Chỉ hỗ trợ Windows.'
+        throw 'Windows is required.'
     }
     if (-not $lfSource.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Refusing non-HTTPS source.'
@@ -23,7 +24,7 @@ try {
     $null = New-Item -Path $lfCacheDir -ItemType Directory -Force
     $lfDownload = Join-Path $lfCacheDir 'LicenseFix.download.ps1'
     $lfSaved = Join-Path $lfCacheDir 'LicenseFix.verified.ps1'
-    Write-Host ('[LicenseFix] Đang tải phiên bản ' + $lfVersion) -ForegroundColor Cyan
+    Write-Host ('[LicenseFix] Downloading version ' + $lfVersion) -ForegroundColor Cyan
     Invoke-WebRequest -Uri $lfSource -OutFile $lfDownload -UseBasicParsing -MaximumRedirection 4 -TimeoutSec 30 -ErrorAction Stop | Out-Null
     $lfBytes = [IO.File]::ReadAllBytes($lfDownload)
     $lfSha = [Security.Cryptography.SHA256]::Create()
@@ -36,20 +37,20 @@ try {
     }
     [IO.File]::WriteAllBytes($lfSaved, $lfBytes)
     Remove-Item -LiteralPath $lfDownload -Force -ErrorAction SilentlyContinue
-    Write-Host ('[LicenseFix] Đã xác minh SHA-256: ' + $lfActual) -ForegroundColor Green
-    Write-Host ('[LicenseFix] Bản sao đã xác minh: ' + $lfSaved) -ForegroundColor DarkGray
+    Write-Host ('[LicenseFix] Verified SHA-256: ' + $lfActual) -ForegroundColor Green
+    Write-Host ('[LicenseFix] Verified copy: ' + $lfSaved) -ForegroundColor DarkGray
     $lfIsAdmin = $false
     try {
         $lfPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
         $lfIsAdmin = $lfPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     } catch {}
     if (-not $lfIsAdmin) {
-        Write-Warning '[LicenseFix] Chưa có quyền quản trị. Có thể quét; sửa lỗi cần chạy PowerShell với quyền Administrator.'
+        Write-Warning '[LicenseFix] Administrator rights are required for repairs; scanning is available.'
     }
     # Execute only verified source. Never re-download on elevation; do not change execution policy.
     $lfCode = [Text.Encoding]::UTF8.GetString($lfBytes).TrimStart([char]0xFEFF)
     & ([ScriptBlock]::Create($lfCode)) -Mode Menu
 } catch {
-    Write-Host ('[LicenseFix] Đã dừng khởi chạy: ' + $_.Exception.Message) -ForegroundColor Red
+    Write-Host ('[LicenseFix] Launch stopped: ' + $_.Exception.Message) -ForegroundColor Red
     throw
 }
