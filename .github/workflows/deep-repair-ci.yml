@@ -1,0 +1,41 @@
+name: Deep Repair static checks
+on:
+  push:
+    branches: [feature/deep-repair-v2, main]
+  pull_request:
+    branches: [main]
+jobs:
+  powershell-parse-and-hash:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell 5.1 script
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\LicenseFix.ps1').Path, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -gt 0) {
+            foreach ($e in $errors) { Write-Host ($e.ToString()) }
+            throw 'PowerShell syntax errors'
+          }
+          Write-Host 'PowerShell syntax validated'
+      - name: Check SHA-256 pin matches main payload
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $launcher = Get-Content '.\launch.ps1' -Raw
+          $expected = [regex]::Match($launcher, "\$lfExpectedSHA256\s*=\s*'([A-F0-9]{64})'").Groups[1].Value
+          if (-not $expected) { throw 'Expected hash not found in launcher' }
+          $actual = (Get-FileHash '.\LicenseFix.ps1' -Algorithm SHA256).Hash
+          if ($expected -cne $actual) { throw "Hash mismatch: $expected vs $actual" }
+          Write-Host "SHA256 validated $actual"
+      - name: Check Deep Repair entry points
+        shell: powershell
+        run: |
+          $source = Get-Content '.\LicenseFix.ps1' -Raw
+          foreach ($name in @('LF-DeepInspect', 'LF-DeepDisplay', 'LF-DeepReport', 'LF-DeepMenu')) {
+            if ($source -notmatch ('function\s+' + $name + '\b')) { throw "Missing $name" }
+          }
+          Write-Host 'Entry points verified'
