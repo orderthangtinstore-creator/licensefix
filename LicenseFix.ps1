@@ -1,16 +1,16 @@
 #requires -Version 5.1
 <#
-LicenseFix v1.0.0 - Windows/Office license diagnostics and scoped remediation.
+LicenseFix v1.2.0-preview - Windows/Office license diagnostics and scoped remediation.
 Preview build: test on a lab PC before performing repairs.
 Independent project. Not affiliated with Microsoft or license.info.vn.
 Repairs only specifically reviewed Registry values after successful backups.
 Never edits SPP data.dat/tokens.dat, license keys, history, or timestamps.
 #>
 [CmdletBinding()]
-param([ValidateSet('Menu','Scan','Plan','Repair','Export')][string]$Mode='Menu')
+param([ValidateSet('Menu','Scan','Plan','Repair','Export','Deep')][string]$Mode='Menu')
 
 $ErrorActionPreference = 'Stop'
-$LFVersion = '1.0.0'
+$LFVersion = '1.2.0-preview'
 $LFWindowsId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 $LFOfficeId = '0ff1ce15-a989-479d-af46-f275c6370663'
 $LFBackups = Join-Path $env:ProgramData 'LicenseFix\Backups'
@@ -221,6 +221,118 @@ function LF-Repair($Scan) {
     Write-Warning 'Do not blindly import backup .reg files; review present licensing state first.'
     LF-Show (LF-Scan)
 }
+
+# Preview: extended read-only evidence; exact diagnosis matters more than a fake green badge.
+function LF-DeepScan {
+    $result = LF-Scan
+    $extra = New-Object 'System.Collections.Generic.List[object]'
+    $incomplete = New-Object 'System.Collections.Generic.List[string]'
+    $mk = {
+        param([string]$group,[string]$detail)
+        [void]$extra.Add([pscustomobject]@{ Group=$group; Status='REVIEW'; Evidence=$detail; CanFix=$false })
+    }
+    # A KMS listener alone is not proof of an unauthorized activation.
+    try {
+        if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+            $listeners = @(Get-NetTCPConnection -LocalPort 1688 -State Listen -ErrorAction SilentlyContinue)
+            foreach ($listener in $listeners) {
+                & $mk '05' ("KMS port 1688 listening; PID=" + $listener.OwningProcess)
+            }
+        } else { [void]$incomplete.Add('05 - network cmdlet not available') }
+    } catch { [void]$incomplete.Add('05 - port check failed') }
+
+    foreach ($path in @((Join-Path $env:windir 'AutoKMS'),(Join-Path $env:windir 'AutoPico'),(Join-Path $env:ProgramData 'KMSpico'))) {
+        if (Test-Path -LiteralPath $path) { & $mk '06' ("Possible activation tool artifact: " + $path) }
+    }
+    $binary = Join-Path $env:windir 'System32\sppsvc.exe'
+    try {
+        if (Test-Path -LiteralPath $binary) {
+            $sig = Get-AuthenticodeSignature -LiteralPath $binary -ErrorAction Stop
+            if ($sig.Status -ne 'Valid') { & $mk '07' ("sppsvc.exe signature=" + $sig.Status) }
+        } else { & $mk '07' 'sppsvc.exe is missing' }
+    } catch { [void]$incomplete.Add('07 - cannot verify Windows SPP signature') }
+
+    # Read-only hosts inspection, no alteration of evidence or timestamps.
+    $hostsFile = Join-Path $env:windir 'System32\drivers\etc\hosts'
+    try {
+        if (Test-Path -LiteralPath $hostsFile) {
+            $number = 0
+            foreach ($line in @(Get-Content -LiteralPath $hostsFile -ErrorAction Stop)) {
+                $number++
+                $activeLine = ($line -split '#',2)[0].Trim()
+                if ($activeLine -match '(?i)(activation\.sls\.microsoft\.com|validation\.sls\.microsoft\.com|licensing\.mp\.microsoft\.com)') {
+                    & $mk '14' ("Hosts line " + $number + ": " + $activeLine)
+                }
+            }
+        }
+    } catch { [void]$incomplete.Add('14 - cannot inspect hosts file') }
+
+    # Office license DLLs in VFS: review signatures and source, do not auto-delete.
+    $bases = @($env:ProgramFiles, [Environment]::GetFolderPath('ProgramFilesX86'))
+    foreach ($base in $bases) {
+        if (-not $base) { continue }
+        foreach ($sub in @('Microsoft Office\root\vfs\System','Microsoft Office\root\vfs\SystemX86')) {
+            $dir = Join-Path $base $sub
+            if (-not (Test-Path -LiteralPath $dir)) { continue }
+            try {
+                foreach ($dll in @(Get-ChildItem -LiteralPath $dir -Filter 'sppc*.dll' -File -ErrorAction Stop)) {
+                    $hash = (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
+                    & $mk '16' ("Office licensing DLL needs provenance review: " + $dll.FullName + "; SHA256=" + $hash)
+                }
+            } catch { [void]$incomplete.Add('16 - VFS inspection incomplete') }
+        }
+    }
+    return [pscustomobject]@{
+        Scan=$result; ExtendedFindings=@($extra.ToArray()); Incomplete=@($incomplete.ToArray());
+        Disclaimer='Preview only. 19 checks NOT implemented. Never fake green, change SPP timestamps or delete audit history.'
+    }
+}
+function LF-DeepMode {
+    do {
+        LF-Title 'Sua loi chuyen sau - PREVIEW'
+        Write-Host ' 1. Quet mo rong (chi doc)'
+        Write-Host ' 2. Lap phuong an sua an toan (dry-run)'
+        Write-Host ' 3. Sao luu + sua Registry da xac minh + quet lai'
+        Write-Host ' 4. Xuat bao cao chuyen sau JSON'
+        Write-Host ' 0. Quay lai'
+        $action = Read-Host 'Chon'
+        switch ($action) {
+            '1' {
+                $data=LF-DeepScan; LF-Show $data.Scan
+                foreach ($finding in $data.ExtendedFindings) {
+                    Write-Host ("[REVIEW #{0}] {1}" -f $finding.Group,$finding.Evidence) -ForegroundColor Yellow
+                }
+                foreach ($missing in $data.Incomplete) { Write-Warning ("Kiem tra chua day du: " + $missing) }
+                Write-Warning 'Chua co day du 19 phep kiem tra. Khong duoc bao cao 19/19 xanh.'
+            }
+            '2' {
+                $data=LF-DeepScan; LF-Show $data.Scan
+                $fixes=@($data.Scan.Issues | Where-Object { $_.CanFix -and $_.RegistryPath -and $_.ValueName })
+                foreach ($fix in $fixes) { Write-Host ("[DRY RUN] Xem xet xoa {0}: {1}" -f $fix.RegistryPath,$fix.ValueName) }
+                if ($fixes.Count -eq 0) { Write-Host 'Khong co gia tri Registry nao duoc phep tu sua.' }
+                Write-Warning 'Cac phat hien chuyen sau chi duoc bao cao; can xac minh truoc khi sua.'
+            }
+            '3' {
+                $before=LF-DeepScan
+                LF-Repair $before.Scan
+                $after=LF-DeepScan
+                LF-Show $after.Scan
+                Write-Host ("Can xem xet them: " + $after.ExtendedFindings.Count)
+            }
+            '4' {
+                $data=LF-DeepScan
+                New-Item -Path $LFReports -ItemType Directory -Force | Out-Null
+                $out=Join-Path $LFReports ('deep-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')
+                $data | ConvertTo-Json -Depth 8 | Out-File -LiteralPath $out -Encoding UTF8
+                Write-Host ("Bao cao: " + $out) -ForegroundColor Green
+            }
+            '0' { break }
+            default { Write-Warning 'Lua chon khong hop le' }
+        }
+        if ($action -ne '0') { [void](Read-Host 'Nhan Enter de tiep tuc') }
+    } while ($action -ne '0')
+}
+
 function LF-Menu {
     do {
         LF-Title 'Main menu'
@@ -229,6 +341,7 @@ function LF-Menu {
         Write-Host ' 3. Backup + confirm Registry cleanup + rescan'
         Write-Host ' 4. Export JSON diagnostics'
         Write-Host ' 5. Run sfc /verifyonly (read-only)'
+        Write-Host ' 6. Sua loi chuyen sau - preview'
         Write-Host ' 0. Exit'
         $choice = Read-Host 'Choose'
         switch($choice) {
@@ -237,6 +350,7 @@ function LF-Menu {
             '3' { $script:LFLastScan=LF-Scan; LF-Show $script:LFLastScan; LF-Repair $script:LFLastScan }
             '4' { if(-not $script:LFLastScan){$script:LFLastScan=LF-Scan}; LF-Export $script:LFLastScan }
             '5' { & sfc.exe /verifyonly }
+            '6' { LF-DeepMode }
             '0' { break }
             default { Write-Warning 'Invalid option' }
         }
@@ -249,5 +363,6 @@ switch ($Mode) {
     'Plan'   { LF-Show (LF-Scan) }
     'Repair' { $scan=LF-Scan; LF-Show $scan; LF-Repair $scan }
     'Export' { $scan=LF-Scan; LF-Export $scan }
+    'Deep'   { LF-DeepMode }
     default  { LF-Menu }
 }
