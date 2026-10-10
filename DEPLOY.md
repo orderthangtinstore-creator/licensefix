@@ -10,14 +10,14 @@ Open Windows PowerShell 5.1+ as Administrator, inspect the source, then run:
 irm https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/launch.ps1 | iex
 ```
 
-The bootstrapper fetches `LicenseFix.ps1`, checks the SHA-256 of the downloaded bytes against the pinned value inside `launch.ps1`, and only then executes. It does **not** validate the downloaded launcher itself: an authenticated, commit-pinned URL is safer for managed computers.
+The bootstrapper fetches `LicenseFix.ps1` from the release commit pinned in `launch.ps1`, checks the SHA-256 of the downloaded bytes, and only then executes. It does **not** validate the downloaded launcher itself: an authenticated, commit-pinned launcher URL is safer for managed computers.
 
 ## Updating the core
 
 1. Work in a branch; review changes and test on a Windows VM.
 2. Keep both `.ps1` files as LF in Git. Keep `launch.ps1` ASCII without a BOM so `irm ... | iex` works in Windows PowerShell 5.1.
 3. Compute SHA-256 from the exact Git blob or downloaded raw `LicenseFix.ps1`, including its UTF-8 BOM. A Windows working copy with CRLF can have a different hash.
-4. Update `$lfExpectedSHA256` in `launch.ps1` and run the repository CI checks.
+4. Commit the reviewed core, then update `$lfSource` to that exact core commit and `$lfExpectedSHA256` to its bytes in `launch.ps1`; run the repository CI checks.
 5. Verify the live short-domain launcher and raw GitHub bytes, then try the read-only Scan first.
 
 Current SHA-256 of `LicenseFix.ps1` in this GitHub release:

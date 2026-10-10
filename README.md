@@ -6,7 +6,7 @@ Công cụ kiểm tra bản quyền Windows/Office và xử lý **từng lỗi c
 
 Mở `START_HERE.cmd`, hoặc chạy `LicenseFix.ps1` bằng Windows PowerShell 5.1. Chế độ `Scan` chỉ đọc; các thao tác sửa yêu cầu quyền Administrator và xác nhận riêng.
 
-Launcher `launch.ps1` tải mã từ nhánh `main` và kiểm tra SHA-256 trước khi chạy. Chỉ dùng launcher trực tuyến sau khi **cả** `LicenseFix.ps1` và `launch.ps1` của cùng phiên bản đã được phát hành. Lệnh `irm ... | iex` thực thi launcher tải từ Internet; hãy xem nội dung và ghim commit khi cần mức bảo đảm cao hơn.
+Launcher `launch.ps1` tải bản lõi theo commit phát hành đã ghim và kiểm tra SHA-256 trước khi chạy. Chỉ dùng launcher trực tuyến sau khi **cả** `LicenseFix.ps1` và `launch.ps1` của cùng phiên bản đã được phát hành. Lệnh `irm ... | iex` thực thi launcher tải từ Internet; hãy xem nội dung và ghim chính launcher vào commit khi cần mức bảo đảm cao hơn.
 
 ## Menu
 

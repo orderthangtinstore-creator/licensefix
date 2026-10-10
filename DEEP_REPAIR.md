@@ -8,7 +8,7 @@ Sau khi chọn quét, màn hình kết quả nhận trực tiếp `2` để xem 
 
 Đọc mã nguồn rồi mở `START_HERE.cmd`, hoặc chạy `LicenseFix.ps1 -Mode Deep` trong Windows PowerShell 5.1. Menu số **6** cũng mở chế độ này. Bản beta cần được thử trên máy ảo trước khi sửa trên máy thật.
 
-`launch.ps1` tải mã từ nhánh `main` và kiểm tra SHA-256 của `LicenseFix.ps1`. Hãy đọc launcher trước khi chạy; bản thân launcher trực tuyến không được ghim vào một commit.
+`launch.ps1` tải bản lõi từ commit phát hành đã ghim và kiểm tra SHA-256 của `LicenseFix.ps1`. Hãy đọc launcher trước khi chạy; bản thân launcher trực tuyến không được ghim vào một commit.
 
 ## Hành động
 

@@ -6,7 +6,8 @@
 
 $ErrorActionPreference = 'Stop'
 $lfVersion = '2.1.2-beta'
-$lfSource = 'https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/main/LicenseFix.ps1'
+# Pin the core to its release commit so GitHub CDN cannot mix launcher and core versions.
+$lfSource = 'https://raw.githubusercontent.com/orderthangtinstore-creator/licensefix/39c0aa813a9ef1de80608076a79eef196e594826/LicenseFix.ps1'
 $lfExpectedSHA256 = '9FD3A207534FFDCB9B83E40B910C9377CD4C57911EDFB95ABA927DCF95F331D9'
 
 try {
