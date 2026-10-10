@@ -146,7 +146,7 @@ function LF-Scan {
         WindowsLicensed=($winLicensed.Count -gt 0);
         WindowsChannel=$(if($winLicensed.Count){[string]$winLicensed[0].ProductKeyChannel}else{'Unknown'});
         OfficeDetected=$officeSeen; OfficeSafe=$officeValid; DomainJoinedOrUnknown=$domain;
-        KmsVolume=$kmsVolume; RepairEligible=$safe;
+        KmsVolume=$kmsVolume; RepairEligible=($safe -and @($issues | Where-Object { $_.CanFix }).Count -gt 0);
         Issues=@($issues.ToArray()); Notes=@($notes.ToArray())
     }
 }
@@ -161,7 +161,7 @@ function LF-Show($Scan) {
         Write-Host "    $($issue.Evidence)"
         Write-Host "    Eligible for confirmed cleanup: $($issue.CanFix)"
     }
-    if ($Scan.Issues.Count -eq 0) { Write-Host 'No findings in the implemented v1 checks.' -ForegroundColor Green }
+    if ($Scan.Issues.Count -eq 0) { Write-Host 'No findings in the implemented baseline checks (not a full 19-check audit).' -ForegroundColor Green }
     foreach ($note in $Scan.Notes) { Write-Host "[INFO] $note" -ForegroundColor Gray }
     Write-Host "TOTAL: $($Scan.Issues.Count) findings" -ForegroundColor Cyan
     Write-Warning 'A green scanner result is not proof of valid license ownership. Check purchase documentation.'
